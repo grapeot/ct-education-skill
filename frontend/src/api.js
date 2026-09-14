@@ -1,3 +1,5 @@
+import { videoInfoFromResponse } from "./video.js";
+
 const FETCH_OPTS = { cache: "no-store" };
 
 function errorFromResponse(response, fallback) {
@@ -96,6 +98,22 @@ export function createApi(base = "") {
         error.code = "sliceFailed";
         throw error;
       }
+    },
+
+    async videoInfo(origin = "") {
+      let response;
+      try {
+        response = await fetch(`${base}/api/video-info`, FETCH_OPTS);
+      } catch {
+        return { available: false, status: "unavailable" };
+      }
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      return videoInfoFromResponse(response.ok, response.status, data, origin);
     },
 
     async voxel(i, j, k) {

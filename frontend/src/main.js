@@ -32,22 +32,39 @@ import {
   visibleIdsForTourStop,
 } from "./state.js";
 import {
+  applyMobileAccordions,
   applySliceAspect,
+  applyVideoModal,
   hideFatal,
   mountApp,
+  paintSlider,
   renderCandidates,
   renderLayers,
   renderOrientation,
   renderReadout,
   renderStats,
   renderTour,
+  renderVideoAction,
   renderWarnings,
   renderFocus,
   showFatal,
   syncClipControls,
   syncSliceControls,
+  syncTourNav,
 } from "./ui.js";
 import { validateManifest, validateMesh } from "./validate.js";
+import {
+  VIDEO_DOWNLOAD_NAME,
+  VIDEO_DOWNLOAD_PATH,
+  VIDEO_PLAY_PATH,
+  applyVideoInfo,
+  canOpenVideo,
+  closeVideo,
+  createVideoState,
+  isMediaFullscreen,
+  openVideo,
+  routeVideoEscape,
+} from "./video.js";
 
 const api = createApi("");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -62,6 +79,9 @@ let pointerDown = null;
 let resizeObserver = null;
 let tourStops = [];
 let voxelSeq = 0;
+let videoState = createVideoState();
+let videoFocus = null;
+let videoMessage = "";
 
 function statsPayload(status) {
   return {
@@ -75,12 +95,19 @@ function statsPayload(status) {
   };
 }
 
+function refreshVideoUi() {
+  if (!refs) return;
+  renderVideoAction(refs, videoState);
+  applyVideoModal(refs, videoState, videoMessage);
+}
+
 function refreshChrome() {
   if (!refs || !state || !manifest) return;
   renderStats(refs, statsPayload(state.status));
   renderReadout(refs, state.selection);
   syncSliceControls(refs, state, manifest.shape);
   syncClipControls(refs, state, manifest.bounds_ras);
+  if (refs.tour) syncTourNav(refs, state.tourIndex, tourStops.length);
 }
 
 function overlayPixel() {
@@ -291,6 +318,59 @@ function onOpacity(id, opacity) {
   if (scene) scene.setLayerAppearance(id, { opacity: state.layers.find((item) => item.id === id).opacity });
 }
 
+function releaseVideoElement() {
+  const video = refs && refs.video;
+  if (!video) return;
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
+function shutTourVideo() {
+  videoState = closeVideo(videoState);
+  videoMessage = "";
+  releaseVideoElement();
+  if (refs && refs["video-download"]) refs["video-download"].removeAttribute("href");
+  refreshVideoUi();
+  if (videoFocus && typeof videoFocus.focus === "function") videoFocus.focus();
+  videoFocus = null;
+}
+
+function openTourVideo() {
+  if (!canOpenVideo(videoState) || !refs) return;
+  videoFocus = document.activeElement;
+  videoState = openVideo(videoState);
+  videoMessage = copy.video.loading;
+  refs.video.setAttribute("src", VIDEO_PLAY_PATH);
+  refs["video-download"].href = VIDEO_DOWNLOAD_PATH;
+  refs["video-download"].setAttribute("download", VIDEO_DOWNLOAD_NAME);
+  refreshVideoUi();
+  const play = refs.video.play();
+  if (play && typeof play.catch === "function") play.catch(() => {});
+  refs["video-dialog"].focus();
+}
+
+async function probeVideo() {
+  videoState = createVideoState();
+  videoMessage = "";
+  refreshVideoUi();
+  try {
+    const origin = window.location && window.location.origin ? window.location.origin : "";
+    const info = await api.videoInfo(origin);
+    videoState = applyVideoInfo(videoState, info);
+  } catch {
+    videoState = applyVideoInfo(videoState, { available: false });
+  }
+  refreshVideoUi();
+}
+
+function videoDialogControls() {
+  if (!refs || !refs["video-dialog"]) return [];
+  return Array.from(refs["video-dialog"].querySelectorAll("button, a[href], video, [tabindex]:not([tabindex='-1'])")).filter(
+    (node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true",
+  );
+}
+
 function exposeHooks() {
   window.ctEducation = {
     get ready() {
@@ -338,6 +418,57 @@ function wire() {
   refs.reset.addEventListener("click", () => {
     if (scene) scene.fitBounds();
   });
+  refs["watch-tour"].addEventListener("click", () => {
+    openTourVideo();
+  });
+  refs["video-close"].addEventListener("click", () => {
+    shutTourVideo();
+  });
+  refs["video-backdrop"].addEventListener("click", (event) => {
+    if (event.target === refs["video-backdrop"]) shutTourVideo();
+  });
+  refs.video.addEventListener("waiting", () => {
+    if (!videoState.open) return;
+    videoMessage = copy.video.loading;
+    refreshVideoUi();
+  });
+  refs.video.addEventListener("canplay", () => {
+    if (!videoState.open) return;
+    videoMessage = "";
+    refreshVideoUi();
+  });
+  refs.video.addEventListener("error", () => {
+    if (!videoState.open) return;
+    videoMessage = copy.video.failed;
+    refreshVideoUi();
+  });
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      const decision = routeVideoEscape(event, {
+        open: Boolean(videoState && videoState.open),
+        fullscreen: isMediaFullscreen(refs && refs.video),
+      });
+      if (decision.close) shutTourVideo();
+    },
+    true,
+  );
+  document.addEventListener("keydown", (event) => {
+    if (!videoState.open) return;
+    if (event.key === "Escape") return;
+    if (event.key !== "Tab") return;
+    const controls = videoDialogControls();
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   refs.slice3d.addEventListener("change", () => {
     state = setShowSlice3d(state, refs.slice3d.checked);
     if (scene) scene.setSlice3dVisible(state.showSlice3d);
@@ -348,6 +479,7 @@ function wire() {
     await refreshSlice();
   });
   refs["slice-index"].addEventListener("input", async () => {
+    paintSlider(refs["slice-index"]);
     state = setSliceIndex(state, state.axis, Number(refs["slice-index"].value), manifest.shape);
     const moved = moveSelectionToSlice(state.selection, state.axis, state.index[state.axis]);
     if (moved) {
@@ -357,10 +489,12 @@ function wire() {
     await refreshSlice();
   });
   refs.wc.addEventListener("input", async () => {
+    paintSlider(refs.wc);
     state = setDisplayWindow(state, Number(refs.wc.value), state.ww);
     await refreshSlice();
   });
   refs.ww.addEventListener("input", async () => {
+    paintSlider(refs.ww);
     state = setDisplayWindow(state, state.wc, Number(refs.ww.value));
     await refreshSlice();
   });
@@ -379,6 +513,7 @@ function wire() {
     refreshChrome();
   });
   refs["clip-pos"].addEventListener("input", () => {
+    paintSlider(refs["clip-pos"]);
     state = setClip(state, { value: Number(refs["clip-pos"].value) });
     if (scene) scene.setClip(state.clip);
   });
@@ -430,12 +565,18 @@ function wire() {
   window.addEventListener("resize", () => {
     if (scene) scene.resize();
   });
+  const mobileQuery = window.matchMedia("(max-width: 900px)");
+  const onMobileChange = () => applyMobileAccordions(document.getElementById("app"));
+  if (typeof mobileQuery.addEventListener === "function") mobileQuery.addEventListener("change", onMobileChange);
+  else if (typeof mobileQuery.addListener === "function") mobileQuery.addListener(onMobileChange);
 }
 
 async function loadCase() {
   ready = false;
   exposeHooks();
   hideFatal(refs);
+  shutTourVideo();
+  probeVideo();
   renderStats(refs, statsPayload("loadingManifest"));
   if (!detectWebGL()) {
     showFatal(refs, "webgl");

@@ -3,6 +3,7 @@ import { formatNumber } from "./affine.js";
 import { sliceExtent } from "./mapping.js";
 import { FALLBACK_LAYER_COLORS, layerHintForId, tourFallbackTitle } from "./state.js";
 import { isCssHexColor } from "./validate.js";
+import { VIDEO_DOWNLOAD_NAME } from "./video.js";
 
 function escapeHtml(value) {
   return String(value)
@@ -10,6 +11,46 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function segment(name, legend, options) {
+  const opts = options
+    .map(
+      ([value, label, checked, aria]) => `
+        <label class="seg-opt">
+          <input type="radio" name="${escapeHtml(name)}" value="${escapeHtml(value)}" ${checked ? "checked" : ""} aria-label="${escapeHtml(aria || label)}" />
+          <span>${escapeHtml(label)}</span>
+        </label>`,
+    )
+    .join("");
+  return `
+    <fieldset class="segment" data-ref="${escapeHtml(name)}">
+      <legend class="sr">${escapeHtml(legend)}</legend>
+      <div class="seg-track">${opts}</div>
+    </fieldset>
+  `;
+}
+
+function slider(ref, label, attrs, valueRef) {
+  return `
+    <label class="slider">
+      <span class="slider-head">
+        <span>${escapeHtml(label)}</span>
+        <span class="num" data-ref="${escapeHtml(valueRef)}">0</span>
+      </span>
+      <input type="range" data-ref="${escapeHtml(ref)}" ${attrs} />
+    </label>
+  `;
+}
+
+function switchControl(ref, label) {
+  return `
+    <label class="switch">
+      <input type="checkbox" data-ref="${escapeHtml(ref)}" />
+      <span class="switch-ui" aria-hidden="true"></span>
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `;
 }
 
 export function mountApp(root) {
@@ -20,42 +61,41 @@ export function mountApp(root) {
           <p class="kicker">${escapeHtml(copy.appKicker)}</p>
           <h1>${escapeHtml(copy.appTitle)}</h1>
         </div>
+        <div class="header-actions">
+          <button type="button" class="btn-watch" data-ref="watch-tour" disabled aria-label="${escapeHtml(copy.a11y.watchTourChecking)}">${escapeHtml(copy.video.checking)}</button>
+        </div>
         <p class="banner">${escapeHtml(copy.banner)}</p>
-        <details class="notes-fold">
-          <summary>${escapeHtml(copy.notesSummary)}</summary>
-          <p>${escapeHtml(copy.disclaimer)}</p>
-          <p>${escapeHtml(copy.colorNote)}</p>
-          <p>${escapeHtml(copy.coordNote)}</p>
-          <p>${escapeHtml(copy.candidates.notDiagnosis)}</p>
-          <ul class="warnings" data-ref="warnings"></ul>
-        </details>
-        <div class="stats" data-ref="stats" role="status">${escapeHtml(copy.stats.loadingManifest)}</div>
+        <div class="top-meta">
+          <details class="notes-fold">
+            <summary>${escapeHtml(copy.notesSummary)}</summary>
+            <p>${escapeHtml(copy.disclaimer)}</p>
+            <p>${escapeHtml(copy.colorNote)}</p>
+            <p>${escapeHtml(copy.coordNote)}</p>
+            <p>${escapeHtml(copy.candidates.notDiagnosis)}</p>
+            <ul class="warnings" data-ref="warnings"></ul>
+          </details>
+          <div class="stats" data-ref="stats" role="status">${escapeHtml(copy.stats.loadingManifest)}</div>
+        </div>
       </header>
       <aside class="rail rail-left">
         ${panel("layers", copy.panels.layers, copy.accordion.layers, `
           <div class="stack" data-ref="layers"></div>
         `)}
         ${panel("clip", copy.panels.clip, copy.accordion.clip, `
-          <label class="check">
-            <input type="checkbox" data-ref="clip-enable" />
-            <span>${escapeHtml(copy.clip.enable)}</span>
-          </label>
-          <fieldset class="segment" data-ref="clip-axis">
-            <legend class="sr">${escapeHtml(copy.a11y.clipEnable)}</legend>
-            <label><input type="radio" name="clip-axis" value="x" /> ${escapeHtml(copy.clip.axisX)}</label>
-            <label><input type="radio" name="clip-axis" value="y" /> ${escapeHtml(copy.clip.axisY)}</label>
-            <label><input type="radio" name="clip-axis" value="z" checked /> ${escapeHtml(copy.clip.axisZ)}</label>
-          </fieldset>
-          <label class="slider">
-            <span>${escapeHtml(copy.clip.position)}</span>
-            <input type="range" data-ref="clip-pos" min="0" max="1" step="0.001" value="0.5" />
-          </label>
+          ${switchControl("clip-enable", copy.clip.enable)}
+          ${segment("clip-axis", copy.a11y.clipEnable, [
+            ["x", "X", false, copy.clip.axisX],
+            ["y", "Y", false, copy.clip.axisY],
+            ["z", "Z", true, copy.clip.axisZ],
+          ])}
+          ${slider("clip-pos", copy.clip.position, 'min="0" max="1" step="0.001" value="0.5"', "clip-pos-value")}
           <p class="warn clip-warn hidden" data-ref="clip-warn">${escapeHtml(copy.clip.uncappedWarning)}</p>
         `)}
         ${panel("tour", copy.panels.tour, copy.accordion.tour, `
+          <p class="tour-status hidden" data-ref="tour-status">${escapeHtml(copy.tour.active)}</p>
           <div class="tour-nav">
             <button type="button" data-ref="tour-prev">${escapeHtml(copy.tour.previous)}</button>
-            <button type="button" data-ref="tour-next">${escapeHtml(copy.tour.next)}</button>
+            <button type="button" class="btn-quiet-fill" data-ref="tour-next">${escapeHtml(copy.tour.start)}</button>
             <button type="button" data-ref="tour-exit">${escapeHtml(copy.tour.exit)}</button>
           </div>
           <ol class="stops" data-ref="tour"></ol>
@@ -68,8 +108,9 @@ export function mountApp(root) {
             <p class="focus-body" data-ref="focus-body">${escapeHtml(copy.focus.overviewBody)}</p>
           </div>
           <div class="stage-actions">
-            <label class="check slice3d-toggle">
+            <label class="switch slice3d-toggle">
               <input type="checkbox" data-ref="slice3d" />
+              <span class="switch-ui" aria-hidden="true"></span>
               <span>${escapeHtml(copy.showSlice3d)}</span>
             </label>
             <button type="button" data-ref="reset">${escapeHtml(copy.buttons.resetView)}</button>
@@ -80,12 +121,11 @@ export function mountApp(root) {
       </section>
       <aside class="rail rail-right">
         ${panel("slice", copy.panels.slice, copy.accordion.slice, `
-          <fieldset class="segment" data-ref="slice-axis">
-            <legend class="sr">${escapeHtml(copy.a11y.sliceAxis)}</legend>
-            <label><input type="radio" name="slice-axis" value="axial" checked /> ${escapeHtml(copy.slice.axial)}</label>
-            <label><input type="radio" name="slice-axis" value="coronal" /> ${escapeHtml(copy.slice.coronal)}</label>
-            <label><input type="radio" name="slice-axis" value="sagittal" /> ${escapeHtml(copy.slice.sagittal)}</label>
-          </fieldset>
+          ${segment("slice-axis", copy.a11y.sliceAxis, [
+            ["axial", copy.slice.axial, true],
+            ["coronal", copy.slice.coronal, false],
+            ["sagittal", copy.slice.sagittal, false],
+          ])}
           <div class="slice-frame">
             <span class="ori ori-top" data-ref="ori-top"></span>
             <span class="ori ori-left" data-ref="ori-left"></span>
@@ -96,18 +136,9 @@ export function mountApp(root) {
               <canvas data-ref="slice-overlay"></canvas>
             </div>
           </div>
-          <label class="slider">
-            <span>${escapeHtml(copy.slice.index)}</span>
-            <input type="range" data-ref="slice-index" min="0" max="1" step="1" value="0" />
-          </label>
-          <label class="slider">
-            <span>${escapeHtml(copy.slice.windowCenter)}</span>
-            <input type="range" data-ref="wc" min="-1200" max="400" step="1" value="-600" />
-          </label>
-          <label class="slider">
-            <span>${escapeHtml(copy.slice.windowWidth)}</span>
-            <input type="range" data-ref="ww" min="50" max="4000" step="10" value="1500" />
-          </label>
+          ${slider("slice-index", copy.slice.index, 'min="0" max="1" step="1" value="0"', "slice-index-value")}
+          ${slider("wc", copy.slice.windowCenter, 'min="-1200" max="400" step="1" value="-600"', "wc-value")}
+          ${slider("ww", copy.slice.windowWidth, 'min="50" max="4000" step="10" value="1500"', "ww-value")}
           <p class="note">${escapeHtml(copy.slice.nativeNote)}</p>
           <p class="note hidden" data-ref="axis-fallback">${escapeHtml(copy.slice.sourceAxisFallback)}</p>
         `)}
@@ -122,6 +153,20 @@ export function mountApp(root) {
       <div class="fatal hidden" data-ref="fatal" role="alert">
         <p data-ref="fatal-text"></p>
         <button type="button" data-ref="retry">${escapeHtml(copy.buttons.retry)}</button>
+      </div>
+      <div class="video-backdrop hidden" data-ref="video-backdrop">
+        <div class="video-dialog" data-ref="video-dialog" role="dialog" aria-modal="true" aria-labelledby="video-title" tabindex="-1">
+          <div class="video-head">
+            <h2 id="video-title">${escapeHtml(copy.video.title)}</h2>
+            <button type="button" data-ref="video-close" aria-label="${escapeHtml(copy.a11y.videoClose)}">${escapeHtml(copy.video.close)}</button>
+          </div>
+          <p class="video-body">${escapeHtml(copy.video.body)}</p>
+          <p class="video-status" data-ref="video-status" role="status"></p>
+          <video data-ref="video" controls playsinline preload="metadata" aria-label="${escapeHtml(copy.a11y.videoPlayer)}"></video>
+          <div class="video-foot">
+            <a class="video-download" data-ref="video-download" download="${escapeHtml(VIDEO_DOWNLOAD_NAME)}">${escapeHtml(copy.video.download)}</a>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -164,6 +209,15 @@ function panel(id, title, accordion, body) {
   `;
 }
 
+export function paintSlider(input) {
+  if (!input) return;
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const value = Number(input.value);
+  const p = max === min || !Number.isFinite(min) || !Number.isFinite(max) ? 0 : ((value - min) / (max - min)) * 100;
+  input.style.setProperty("--p", `${Math.min(100, Math.max(0, p))}%`);
+}
+
 export function renderStats(refs, { status, meshCount, candidateCount, sliceCount, warningCount, loaded, total }) {
   const parts = [];
   if (status === "loadingManifest") parts.push(copy.stats.loadingManifest);
@@ -178,6 +232,14 @@ export function renderStats(refs, { status, meshCount, candidateCount, sliceCoun
   void warningCount;
 }
 
+function layerStatus(local) {
+  if (local && local.error === "missingMesh") return { text: copy.layers.missing, kind: "missing" };
+  if (local && local.error) return { text: copy.layers.missing, kind: "missing" };
+  if (local && !local.loaded && local.visible) return { text: copy.layers.loading, kind: "loading" };
+  if (local && local.visible) return { text: copy.layers.on, kind: "on" };
+  return { text: copy.layers.off, kind: "off" };
+}
+
 export function renderLayers(refs, manifest, state, handlers) {
   refs.layers.replaceChildren();
   manifest.layers.forEach((layer, order) => {
@@ -188,16 +250,24 @@ export function renderLayers(refs, manifest, state, handlers) {
     const color = isCssHexColor(rawColor)
       ? rawColor
       : FALLBACK_LAYER_COLORS[order % FALLBACK_LAYER_COLORS.length];
+    const status = layerStatus(local);
     row.innerHTML = `
-      <label class="check">
-        <input type="checkbox" data-layer="${escapeHtml(layer.id)}" ${local && local.visible ? "checked" : ""} />
-        <span class="swatch" style="background:${escapeHtml(color)}"></span>
-        <span>${escapeHtml(layer.name || layer.id)}</span>
-      </label>
+      <div class="layer-head">
+        <label class="switch">
+          <input type="checkbox" data-layer="${escapeHtml(layer.id)}" ${local && local.visible ? "checked" : ""} />
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span class="swatch" style="background:${escapeHtml(color)}"></span>
+          <span class="layer-name">${escapeHtml(layer.name || layer.id)}</span>
+        </label>
+        <span class="layer-status is-${status.kind}">${escapeHtml(status.text)}</span>
+      </div>
       <p class="hint">${escapeHtml(layerHintForId(layer.id))}</p>
       <p class="meta">${escapeHtml(layer.review_status || copy.layers.educationalColor)}</p>
       <label class="slider">
-        <span>${escapeHtml(copy.layers.opacity)}</span>
+        <span class="slider-head">
+          <span>${escapeHtml(copy.layers.opacity)}</span>
+          <span class="num">${local ? Math.round(local.opacity * 100) : 78}</span>
+        </span>
         <input type="range" min="0" max="1" step="0.01" value="${local ? local.opacity : 0.78}" data-opacity="${escapeHtml(layer.id)}" />
       </label>
       <p class="error hidden" data-layer-error="${escapeHtml(layer.id)}"></p>
@@ -207,7 +277,13 @@ export function renderLayers(refs, manifest, state, handlers) {
     toggle.addEventListener("change", () => handlers.onToggle(layer.id, toggle.checked));
     const opacity = row.querySelector("input[data-opacity]");
     opacity.setAttribute("aria-label", `${copy.a11y.layerOpacity}: ${layer.name || layer.id}`);
-    opacity.addEventListener("input", () => handlers.onOpacity(layer.id, Number(opacity.value)));
+    paintSlider(opacity);
+    opacity.addEventListener("input", () => {
+      const valueNode = row.querySelector(".slider-head .num");
+      if (valueNode) valueNode.textContent = String(Math.round(Number(opacity.value) * 100));
+      paintSlider(opacity);
+      handlers.onOpacity(layer.id, Number(opacity.value));
+    });
     if (local && local.error) {
       const errorNode = row.querySelector("[data-layer-error]");
       errorNode.classList.remove("hidden");
@@ -225,6 +301,7 @@ export function renderTour(refs, tour, activeIndex, onSelect) {
     const empty = document.createElement("li");
     empty.textContent = copy.tour.empty;
     refs.tour.append(empty);
+    syncTourNav(refs, activeIndex, tour.length);
     return;
   }
   tour.forEach((stop, index) => {
@@ -234,7 +311,7 @@ export function renderTour(refs, tour, activeIndex, onSelect) {
     button.className = index === activeIndex ? "stop is-active" : "stop";
     if (index === activeIndex) button.setAttribute("aria-current", "step");
     button.setAttribute("aria-label", `${copy.a11y.tourStop}: ${stop.title || tourFallbackTitle(stop.id)}`);
-    button.innerHTML = `<span class="n">${index + 1}</span><span>${escapeHtml(stop.title || tourFallbackTitle(stop.id))}</span>`;
+    button.innerHTML = `<span class="n">${String(index + 1).padStart(2, "0")}</span><span>${escapeHtml(stop.title || tourFallbackTitle(stop.id))}</span>`;
     if (stop.description) {
       const note = document.createElement("small");
       note.textContent = stop.description;
@@ -244,6 +321,23 @@ export function renderTour(refs, tour, activeIndex, onSelect) {
     item.append(button);
     refs.tour.append(item);
   });
+  syncTourNav(refs, activeIndex, tour.length);
+}
+
+export function syncTourNav(refs, tourIndex, tourLength) {
+  const started = tourIndex >= 0;
+  if (refs["tour-next"]) {
+    refs["tour-next"].textContent = started ? copy.tour.next : copy.tour.start;
+    refs["tour-next"].disabled = tourLength === 0 || (started && tourIndex >= tourLength - 1);
+  }
+  if (refs["tour-prev"]) refs["tour-prev"].disabled = !started || tourIndex <= 0;
+  if (refs["tour-exit"]) refs["tour-exit"].disabled = !started;
+  if (refs["tour-status"]) {
+    refs["tour-status"].textContent = started ? copy.tour.active : "";
+    refs["tour-status"].classList.toggle("hidden", !started);
+  }
+  const panel = refs.tour && refs.tour.closest(".panel");
+  if (panel) panel.classList.toggle("tour-running", started);
 }
 
 export function renderCandidates(refs, annotations, focusId, onFocus) {
@@ -349,6 +443,12 @@ export function syncSliceControls(refs, state, shape) {
     input.checked = input.value === state.axis;
   });
   if (refs.slice3d) refs.slice3d.checked = Boolean(state.showSlice3d);
+  if (refs["slice-index-value"]) refs["slice-index-value"].textContent = String(state.index[state.axis]);
+  if (refs["wc-value"]) refs["wc-value"].textContent = String(state.wc);
+  if (refs["ww-value"]) refs["ww-value"].textContent = String(state.ww);
+  paintSlider(refs["slice-index"]);
+  paintSlider(refs.wc);
+  paintSlider(refs.ww);
 }
 
 export function syncClipControls(refs, state, bounds) {
@@ -364,6 +464,43 @@ export function syncClipControls(refs, state, bounds) {
   refs["clip-pos"].max = String(max);
   refs["clip-pos"].step = String(Math.max((max - min) / 500, 0.1));
   refs["clip-pos"].value = String(state.clip.value);
+  if (refs["clip-pos-value"]) refs["clip-pos-value"].textContent = formatNumber(state.clip.value, 1);
+  paintSlider(refs["clip-pos"]);
+}
+
+export function renderVideoAction(refs, videoState) {
+  const button = refs["watch-tour"];
+  if (!button) return;
+  const status = videoState && videoState.status;
+  if (status === "available") {
+    button.disabled = Boolean(videoState.open);
+    button.textContent = copy.video.watch;
+    button.setAttribute("aria-label", copy.a11y.watchTour);
+    button.classList.add("is-ready");
+  } else if (status === "checking") {
+    button.disabled = true;
+    button.textContent = copy.video.checking;
+    button.setAttribute("aria-label", copy.a11y.watchTourChecking);
+    button.classList.remove("is-ready");
+  } else {
+    button.disabled = true;
+    button.textContent = copy.video.unavailable;
+    button.setAttribute("aria-label", copy.a11y.watchTourUnavailable);
+    button.classList.remove("is-ready");
+  }
+}
+
+export function applyVideoModal(refs, videoState, message) {
+  const open = Boolean(videoState && videoState.open);
+  refs["video-backdrop"].classList.toggle("hidden", !open);
+  refs["video-dialog"].setAttribute("aria-hidden", open ? "false" : "true");
+  if (refs["video-status"]) {
+    refs["video-status"].textContent = message || "";
+    refs["video-status"].classList.toggle("hidden", !message);
+  }
+  if (open) {
+    refs["video-dialog"].setAttribute("aria-label", copy.a11y.videoDialog);
+  }
 }
 
 export function showFatal(refs, code) {

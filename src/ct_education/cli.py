@@ -30,6 +30,7 @@ def main(argv=None):
     serve = commands.add_parser("serve", help="Serve a completed workspace on loopback only.")
     serve.add_argument("--workspace", required=True)
     serve.add_argument("--port", type=int, default=8787)
+    serve.add_argument("--video-file", default=None)
     video = commands.add_parser("render-video", help="Render a private MP4 using the local viewer; requires the video extra and ffmpeg.")
     video.add_argument("--workspace", required=True)
     video.add_argument("--output", help="New MP4 within the workspace; defaults to workspace/tour.mp4.")
@@ -59,7 +60,7 @@ def main(argv=None):
             else:
                 if not 1 <= args.port <= 65535:
                     raise PipelineError("E_PORT")
-                with create_server(args.workspace, args.port, require_frontend=True) as server:
+                with create_server(args.workspace, args.port, require_frontend=True, video_file=args.video_file) as server:
                     print(f"Local viewer: http://127.0.0.1:{args.port}", flush=True)
                     server.serve_forever()
         return 0

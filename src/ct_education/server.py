@@ -5,8 +5,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 import mmap
+import os
 from pathlib import Path
 import re
+import stat
 from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
@@ -79,8 +81,19 @@ class ViewerServer(ThreadingHTTPServer):
         pass
 
 
-def create_server(workspace, port=8787, require_frontend=False):
+def create_server(workspace, port=8787, require_frontend=False, *, video_file=None):
     _, workspace = boundaries(workspace=workspace)
+    if video_file is not None:
+        try:
+            video_file = Path(video_file)
+            if video_file.is_absolute() or ".." in video_file.parts or video_file.suffix.lower() != ".mp4":
+                raise ValueError
+            with local_file(workspace, video_file) as stream:
+                metadata = os.fstat(stream.fileno())
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < 0:
+                    raise ValueError
+        except (OSError, PipelineError, TypeError, ValueError):
+            raise PipelineError("E_VIDEO_FILE") from None
     frontend = REPO / "frontend" / "dist"
     if require_frontend and not (frontend / "index.html").is_file():
         raise PipelineError("E_FRONTEND_NOT_BUILT")
@@ -119,20 +132,78 @@ def create_server(workspace, port=8787, require_frontend=False):
             def send_error(self, code, message=None, explain=None):
                 self.respond(code, b'{"error":"E_REQUEST"}', "application/json")
 
-            def respond(self, code, body, content_type, index=None):
+            def respond(self, code, body, content_type, index=None, *, length=None, headers=()):
                 self.send_response(code)
                 self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Length", str(len(body) if length is None else length))
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; worker-src 'none'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; worker-src 'none'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
                 if index is not None:
                     self.send_header("X-Slice-Index", str(index))
+                for name, value in headers:
+                    self.send_header(name, value)
                 self.end_headers()
                 if self.command != "HEAD":
                     self.wfile.write(body)
+
+            def serve_video(self, download):
+                with local_file(workspace, video_file) as stream:
+                    metadata = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < 0:
+                        raise PipelineError("E_VIDEO_FILE")
+                    size = metadata.st_size
+                    disposition = "attachment" if download else "inline"
+                    headers = [("Accept-Ranges", "bytes"),
+                               ("Content-Disposition", f'{disposition}; filename="ct-education-tour.mp4"')]
+                    start, end, code = 0, size - 1, 200
+                    ranges = self.headers.get_all("Range", [])
+                    if ranges:
+                        try:
+                            if len(ranges) != 1:
+                                raise ValueError
+                            match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", ranges[0])
+                            if not match or not any(match.groups()) or size == 0:
+                                raise ValueError
+                            first, last = match.groups()
+                            if first:
+                                start = int(first)
+                                end = min(int(last), size - 1) if last else size - 1
+                                if start >= size or end < start:
+                                    raise ValueError
+                            else:
+                                suffix = int(last)
+                                if suffix == 0:
+                                    raise ValueError
+                                start = max(0, size - suffix)
+                            code = 206
+                            headers.append(("Content-Range", f"bytes {start}-{end}/{size}"))
+                        except ValueError:
+                            self.respond(416, b"", "video/mp4",
+                                         headers=headers + [("Content-Range", f"bytes */{size}")])
+                            return
+                    length = end - start + 1
+                    stream.seek(start)
+                    # Bound reads to the advertised length, including if the file grows.
+                    try:
+                        self.respond(code, b"", "video/mp4", length=length, headers=headers)
+                        if self.command != "HEAD":
+                            remaining = length
+                            while remaining:
+                                chunk = stream.read(min(64 * 1024, remaining))
+                                if not chunk:
+                                    self.close_connection = True
+                                    return
+                                self.wfile.write(chunk)
+                                remaining -= len(chunk)
+                    except OSError:
+                        # Headers are already sent; never append an error to video bytes.
+                        self.close_connection = True
+
+            def do_HEAD(self):
+                self.do_GET()
 
             def do_GET(self):
                 try:
@@ -162,6 +233,15 @@ def create_server(workspace, port=8787, require_frontend=False):
                     boundaries(workspace=workspace)
                     if path == "/api/manifest" and not query:
                         self.respond(200, manifest_bytes, "application/json")
+                    elif path == "/api/video-info" and not query:
+                        info = {"available": video_file is not None}
+                        if video_file is not None:
+                            info.update(url="/api/video", download_url="/api/video?download=1")
+                        self.respond(200, json.dumps(info).encode(), "application/json")
+                    elif path == "/api/video" and video_file is not None:
+                        if query not in ({}, {"download": ["1"]}):
+                            raise ValueError
+                        self.serve_video(download=bool(query))
                     elif path.startswith("/api/mesh/") and not query:
                         name = path.removeprefix("/api/mesh/")
                         if name not in layer_ids:

@@ -19,13 +19,13 @@ Tests use synthetic inputs generated in memory or external temporary storage, ne
 
 ## Verification Status
 
-- Verified on 2026-09-14 for iteration 2: **69 Python tests passed with the opt-in ffmpeg smoke enabled; 32 frontend unit tests passed**, both with zero skips. The documentation reviewer independently reran these suites.
-- Python coverage comprises 32 pipeline tests, 9 repository hygiene tests, and 28 video tests. Without the smoke environment flag, the current suite has 68 passing tests and one skipped smoke test.
-- The coordinating maintainer separately verified the production build, final desktop/mobile browser QA without console errors, and video export with successful ffprobe validation and full ffmpeg decoding. These generic functional outcomes do not certify segmentation or clinical quality.
-- Required `master` check: `scaffold-hygiene`. Current CI runs default Python discovery, `npm test`, and the generic frontend build, but not the opt-in encoder smoke or Playwright browser installation. It does not deploy or upload artifacts. The current default Python suite skips one smoke test; the local opt-in run executes all 69.
-- Maintainer-confirmed release status: [PR1](https://github.com/grapeot/ct-education-skill/pull/1) merged via normal squash after required GitHub CI passed. GLM privacy reviews for the scaffold and PR1 passed. PR2's privacy gate, submission, and remote CI result remain pending; PR1's pass is not a PR2 result.
+- Independently rerun on 2026-09-14 for optional media: **all 89 Python tests passed with the opt-in ffmpeg smoke enabled; all 42 frontend unit tests passed**, with zero skips. The earlier frontend ASCII hygiene failure is resolved after the maintainer's separator fix.
+- Python coverage comprises 32 pipeline, 9 repository hygiene, 28 video-rendering, and 20 video HTTP tests. Default discovery skips the one opt-in smoke test; the enabled run executes all 89.
+- Prior iteration-2 verification passed 69 Python and 32 frontend tests. The coordinating maintainer then verified the production build, desktop/mobile browser QA without console errors, and video export with successful ffprobe validation and full ffmpeg decoding. Those results do not establish acceptance of the new playback UI or authenticated routing, and do not certify segmentation or clinical quality.
+- Required `master` check: `scaffold-hygiene`. Current CI runs default Python discovery, `npm test`, and the generic frontend build, but not the opt-in encoder smoke or Playwright browser installation. It does not deploy or upload artifacts. No PR3 CI result is claimed.
+- Maintainer-confirmed release status: [PR1](https://github.com/grapeot/ct-education-skill/pull/1) and [PR2](https://github.com/grapeot/ct-education-skill/pull/2) are merged; PR3 is not created. The previously recorded scaffold/PR1 GLM privacy passes are not a privacy result for the current changes.
 - CLI help for all four subcommands and the Playwright browser-install command was checked against source. The earlier generic external annotation example was accepted on synthetic geometry with generic output IDs.
-- The coordinating maintainer's final manual privacy gate remains required before PR submission; local test passes do not replace it. The documentation reviewer performs no Git mutations.
+- The current privacy gate and GLM review remain pending with the coordinating maintainer before PR submission; local and browser test passes do not replace them. The documentation reviewer performs no Git commands or source edits.
 
 ## Backend Coverage
 
@@ -57,9 +57,11 @@ Coverage is bounded by the tested cases. It does not prove every schema edge cas
 
 The encoder smoke is not full browser E2E. The separate maintainer-reported browser/video run supplies bounded integration evidence; it does not imply every browser or runtime failure path has been tested.
 
+`tests/test_video_http.py` adds 20 synthetic cases for optional single-file serving: disabled-by-default behavior, generic metadata, inline/attachment GET and HEAD, bounded/open-ended/suffix ranges, 206/416 responses, and request guards. It covers startup path/type/symlink rejection, tested post-startup replacements, current file sizes, bounded reads, hidden-file exclusion, and CLI defaults/errors. These are loopback HTTP tests, not browser playback or authenticated-proxy validation.
+
 ## Frontend Coverage
 
-`frontend/tests/` contains 32 unit tests for client logic:
+`frontend/tests/` contains 42 unit tests for client logic:
 
 - Affine mapping and inversion, LPS/RAS conversion, finite manifest values, and mesh validation.
 - Native PNG pixel mapping, slice extents/corners, physical orientation labels, and source-axis fallback for oblique geometry.
@@ -67,6 +69,8 @@ The encoder smoke is not full browser E2E. The separate maintainer-reported brow
 - Four clipped-hit filtering tests: discarded mesh hits are skipped, unclipped slice/locator hits remain eligible, disabling clipping preserves the nearest hit, and all-discarded hits yield no selection.
 - Two tour-expansion tests: minimal manifest tours gain local layer/source stops without duplicating a sufficiently complete tour.
 - Five iteration-2 tests cover physical canvas aspect, superior-up display/click inversion, matching orientation labels, slice-selection updates that discard stale HU, and vascular fallback targets independent of annotation centers. These unit tests do not assert browser camera fitting or asynchronous HTTP refetch behavior.
+- Seven video logic tests cover valid same-origin metadata, unavailable/missing responses, rejected external/traversal paths, URL canonicalization, and click-only source state with close resetting that state. They do not exercise DOM pause/load calls, focus restoration, downloads, or real media playback.
+- Three additional video logic tests cover Escape from focused video controls, preserving native fullscreen Escape, and ignoring unrelated keys or a closed modal. These bring video logic coverage to 10 tests; browser event delivery is checked separately.
 
 These tests do not instantiate a browser renderer. They are not end-to-end evidence for camera movement, opacity rendering, WebGL picking, or desktop/mobile usability.
 
@@ -78,7 +82,11 @@ Automated scanning cannot recognize every identifying case fact. Keep all runtim
 
 ## Visual QA and Regressions
 
-The coordinating maintainer completed final desktop/mobile browser QA without console errors and verified the final MP4 with ffprobe and full ffmpeg decoding. Earlier interaction checks included selection, clipping, and candidate focus. Successful rendering and decoding are not evidence of high-fidelity clinical masks or complete anatomy.
+For iteration 2, the coordinating maintainer completed desktop/mobile browser QA without console errors and verified the MP4 with ffprobe and full ffmpeg decoding. Earlier interaction checks included selection, clipping, and candidate focus. Successful rendering and decoding are not evidence of high-fidelity clinical masks or complete anatomy.
+
+The coordinating maintainer reports successful Chrome checks through a caller-managed authenticated private proxy across desktop, portrait, and landscape viewports: video loading and playback, seeking with 206 responses, valid attachment download, no media source before click, close-time pause/source detachment and focus restoration, Escape from focused native controls, and a fitting landscape footer. These are bounded Chrome viewport checks, not iPhone Safari certification or comprehensive cross-browser coverage. The documentation reviewer reran local suites, not these browser checks.
+
+Keep native fullscreen Escape behavior, backdrop dismissal, and unavailable-video fallback in future regressions. Caller-managed authenticated proxies must forward `Range` and preserve `Cache-Control: no-store`; retain deployment details privately.
 
 Future changes still need regression checks appropriate to their scope: desktop/mobile loading, layer visibility and opacity, uncapped cuts, source-linked picks/crosshairs, tour navigation, and candidate focus. Inspect native/reduced-grid alignment, orientation, leakage, and missing structures separately from UI functionality. For video, verify playable MP4 output, expected frame count, source linkage, and legible educational warnings. Check network/cache behavior locally.
 

@@ -70,7 +70,7 @@ export class ObservatoryScene {
       renderer.dispose();
       throw new Error("webgl");
     }
-    renderer.setClearColor(0x08090c, 1);
+    renderer.setClearColor(0x0c1018, 1);
     renderer.localClippingEnabled = false;
     renderer.shadowMap.enabled = false;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -78,7 +78,7 @@ export class ObservatoryScene {
     this.renderer = renderer;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x08090c);
+    this.scene.background = new THREE.Color(0x0c1018);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 1, 20000);
     this.camera.up.set(0, 0, 1);
@@ -97,13 +97,13 @@ export class ObservatoryScene {
 
     this.scene.add(new THREE.HemisphereLight(0xf3ead8, 0x12161c, 0.42));
     this.scene.add(new THREE.AmbientLight(0xf3ead8, 0.16));
-    const key = new THREE.DirectionalLight(0xfff6e8, 1.05);
+    const key = new THREE.DirectionalLight(0xfff6e8, 0.96);
     key.position.set(180, -220, 360);
     this.scene.add(key);
     const fill = new THREE.DirectionalLight(0x9bb7c9, 0.32);
     fill.position.set(-240, 160, 70);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0x2ec9c0, 0.28);
+    const rim = new THREE.DirectionalLight(0x7eb8b4, 0.14);
     rim.position.set(30, 260, -90);
     this.scene.add(rim);
 
