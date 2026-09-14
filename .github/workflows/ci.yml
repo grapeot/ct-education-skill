@@ -1,0 +1,29 @@
+name: Scaffold CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold-hygiene:
+    name: scaffold-hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Run offline scaffold checks
+        run: |
+          uv venv --python 3.12
+          source .venv/bin/activate
+          python -B -m unittest discover -s tests -v
