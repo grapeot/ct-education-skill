@@ -2,27 +2,50 @@
 
 ## Current Status
 
-Phase 0 scaffold only. No runnable CLI, CT processing, viewer, server, or video export exists. `src/` and `scripts/` remain placeholders. Git and remote configuration are outside this scaffold's scope.
+The v0.1.0 backend Python package, `inspect`/`build`/`serve`/`render-video` CLI, and Three.js frontend are implemented and usable for local educational exploration. Video export uses Playwright Chromium and ffmpeg. Segmentation remains a limited CPU heuristic baseline, not validated models or high-fidelity clinical masks. Reviewed labelmap import, arbitrary oblique clipping, and anatomical oblique resampling remain unsupported.
+
+Verification on 2026-09-14: **61 Python tests passed with the opt-in ffmpeg smoke enabled and 27 frontend unit tests passed**, with zero skips, independently rerun by the documentation reviewer. Scanner integration is complete. The coordinating maintainer separately reports successful authorized private generation, desktop/mobile browser QA with no console errors and selection/clipping/candidate focus checked, and video generation. These generic functional outcomes do not certify anatomy or segmentation quality. The final manual privacy gate is next, owned by the coordinating maintainer.
 
 ## Changelog
 
 ### 2026-09-14
 
-- Added English requirements, architecture, contributor rules, one root skill, and MIT license.
-- Defined external-only data boundaries, native geometry, candidate uncertainty, and local viewer requirements.
-- Added offline standard-library hygiene tests and a `master` CI workflow without publishing or artifact uploads.
-- Validation: Python 3.12.9 in a uv-managed `.venv`; `python -B -m unittest discover -s tests -v` passed all 9 hygiene tests, with zero skips.
-- Separate bounded private-path, email, and credential-marker scan found zero matches in scaffold files. Manual review found no medical assets or identifying case facts. This is not a guarantee against arbitrary sensitive text.
-- No linter is configured. Application tests and remote CI have not run; branch protection is not configured by this scaffold. No Git commands were performed.
+- Initial scaffold: English requirements, architecture, contributor rules, one root skill, MIT license, external-only data boundaries, and offline hygiene CI. All 9 hygiene checks passed at that historical stage; this is separate from current runtime verification.
+- Implemented DICOM inspection, native geometry/HU processing, CPU candidate masks, mesh generation, optional external annotations, manifest-last publication, and guarded loopback APIs.
+- Implemented Three.js layer controls, native-grid slices, coordinate/voxel selection, clipping, candidate focus, and local tour navigation.
+- Initial documentation milestone: refreshed six files from a Cursor rough draft and verified the then-current 18 backend and 21 frontend tests. Scanner integration and browser verification were still pending at that historical stage.
+- Accepted the generic external annotation example on synthetic geometry and verified identifier replacement. Post-edit public hygiene scan returned zero findings; no real input was used for these checks.
+- Added `render-video`: private browser profile, full-viewport capture, timed orbit/tour, annotation-free source-slice sweep, ffmpeg H.264 faststart MP4, and exclusive output publication.
+- Extended input collection to loose DICOM plus ZIP packages, combining only matching series and rejecting duplicate SOP instances/positions. Added clipped-hit filtering and frontend tour expansion.
+- Completed scanner integration and independently verified the full 61-test Python suite, including the opt-in synthetic ffmpeg smoke, and 27 frontend unit tests. The smoke uses real encoding but mocked browser/server orchestration.
+- Coordinating maintainer verified authorized private generation, bounded desktop/mobile browser functionality without console errors, and video generation. Only generic results are recorded; no case facts, geometry, or runtime artifact details are included.
+- Final seven-document refresh used a Cursor draft followed by source/help review. Corrected the default-local privacy policy to permit only explicit per-case user-approved GPT review of approved material, purpose, and destination. General build/test/release permission does not authorize uploads.
+- The final manual privacy gate and remote PR/CI outcomes remain the coordinating maintainer's responsibility. No remote CI pass is claimed by this update.
+- No Git mutations were performed by the delegated documentation worker.
 
-## Phased Plan
+## Branch Protection
 
-- [x] Scaffold: documentation, license, configuration example, single root skill, tests and CI definition.
-- [ ] MVP: fail-closed paths and geometry, CPU candidates, reviewed-label imports, linked slices/3D, local guided tour.
-- [ ] QA: synthetic geometry/privacy/segmentation/UI checks and separately authorized local review.
-- [ ] Video: optional downstream Blender and `render-video` after MVP and QA.
-- [ ] Coordinating maintainer: serial Git setup and remote `master` protection, PR required with zero approvals allowed, administrator enforcement, and required `scaffold-hygiene` check.
+The coordinating maintainer confirms active protection on `master`: PRs required, zero required approvals, `enforce_admins: true`, required check `scaffold-hygiene`, and no force pushes or branch deletion. Current project PR/merge iteration is user-authorized and coordinated serially. Future mutations still require explicit authorization; the policy must not be bypassed or weakened.
+
+## Development Checklist
+
+- [x] Scaffold, documentation, license, single root skill, and CI definition.
+- [x] Backend inspection, strict geometry/HU handling, CPU masks, and surface extraction.
+- [x] External annotation schema and generic served text.
+- [x] Guarded loopback server and native slice/voxel APIs.
+- [x] Three.js viewer, candidate controls, clipping, and local tour.
+- [x] Video export with private staging and no-overwrite MP4 publication.
+- [x] CLI/user documentation and RFC updated for implemented v0.1.
+- [x] Full 61-test Python suite with encoder smoke and 27 frontend tests.
+- [x] Maintainer-confirmed remote `master` protection.
+- [x] Scanner integration and local full-suite verification.
+- [x] Maintainer-reported desktop/mobile browser QA and video generation.
+- [ ] Final manual privacy gate before PR submission; remote CI outcome after submission.
+- [ ] Heuristic mask-quality review and refinement, with authorized evidence external.
+- [ ] Deferred: reviewed labelmap import and oblique viewing extensions.
 
 ## Lessons Learned
 
-No runtime experiments have been performed. There are no observed CT-processing lessons yet. Passing scaffold checks must not be reported as geometry, privacy-runtime, or segmentation validation.
+- Native and reduced-grid affines differ: source HU and labels have distinct shapes, strides, and spatial transforms. Array indices alone do not establish alignment.
+- Manifest-last publication matters: failure tests include partial destination publication without a completed manifest. An incomplete workspace is not a usable build; keep it separate from successful runs.
+- Scaffold checks cannot establish runtime geometry or visual quality. Backend synthetic and frontend logic tests add bounded evidence, not anatomical or clinical validation.

@@ -10,14 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_DIRS = {
     "workspace", "workspaces", "data", "input", "output", "artifacts", "private"
 }
-LOCAL_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache"}
+LOCAL_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "node_modules", "dist", "build"}
 SUFFIXES = (
     "dcm dicom ima nii nii.gz nrrd nhdr mha mhd raw img hdr npy npz h5 hdf5 "
     "pkl pickle pt pth onnx safetensors bin pdf png jpg jpeg tif tiff webp gif "
     "bmp glb gltf obj stl ply vtk vtp blend blend1 mp4 mov avi webm mkv zip tar "
     "gz bz2 xz 7z"
 ).split()
-ALLOWED_NAMES = {"LICENSE", ".gitignore", ".env.example", ".gitkeep"}
+ALLOWED_NAMES = {"LICENSE", ".gitignore", ".env.example", ".gitkeep", "package.json", "package-lock.json"}
 PRIVATE_TEXT = re.compile(
     r"/(?:Users|home)/[A-Za-z0-9_.-]+/"
     r"|op:" + r"//"
@@ -40,6 +40,8 @@ def hygiene_findings(root):
                 subdirs.remove(name)
             elif name in LOCAL_DIRS:
                 subdirs.remove(name)
+            elif name.endswith(".egg-info"):
+                subdirs.remove(name)
         for name in files:
             path = Path(directory) / name
             if path.is_symlink():
@@ -50,7 +52,7 @@ def hygiene_findings(root):
             ):
                 findings.add("asset-suffix")
                 continue
-            if name not in ALLOWED_NAMES and path.suffix not in {".md", ".py", ".yml"}:
+            if name not in ALLOWED_NAMES and path.suffix not in {".md", ".py", ".yml", ".toml", ".js", ".html", ".css"}:
                 findings.add("unexpected-file")
                 continue
             if path.stat().st_size > 256_000:
@@ -80,7 +82,7 @@ class ScaffoldTests(unittest.TestCase):
         )
         skill = (ROOT / "skills/ct_education.md").read_text()
         self.assertTrue(skill.startswith("---\nname: ct-education\ndescription:"))
-        self.assertIn("Scaffold only", skill)
+        self.assertIn("ct-edu", skill)
 
     def test_public_file_hygiene(self):
         self.assertEqual(hygiene_findings(ROOT), set())

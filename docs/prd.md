@@ -1,39 +1,61 @@
 # Product Requirements
 
-## Goal and Scope
+## Goal
 
-The planned CT Education Skill helps learners explore chest anatomy in a local interactive 3D viewer and check every spatial selection against original slices. Current status is scaffold only; none of the application behavior below exists yet.
+Provide a local educational tool and coding agent skill that reads chest CT, extracts limited CPU heuristic candidates, and links interactive 3D surfaces to native-grid slice views. **v0.1.0 backend, frontend, and video export are implemented and usable.** Correctness and source linkage take priority over cosmetic rendering; implementation completion does not establish segmentation quality or clinical validity.
 
-It is not intended for diagnosis, clinical advice, or treatment planning. Algorithmic outputs are candidate layers, not confirmed anatomy. Reviewed external labels are not automatically ground truth. Noncontrast scans do not justify promises of complete vasculature or reliable artery-vein separation.
+## Implemented Baseline
 
-## Planned Experience
+- DICOM ingestion: External read-only folders containing loose files and ZIP packages, or a single ZIP, read without extraction. Frames with matching `SeriesInstanceUID` can span packages; different series remain separate. Supports consistent single-frame `CTImageStorage`, `MONOCHROME2`, HU rescaling, and near-axial uniform grids with supported tilted displacement. Rejects scouts, enhanced/multiframe objects, duplicate SOP frames/positions, and inconsistent or nonuniform stacks. Archive path, size, and symlink checks apply per ZIP; ZIP-inside-ZIP recursion is unsupported.
+- Series selection: `inspect` reports numbers, counts, support status, reason codes, and skipped files. `build` defaults to the supported series with the most frames or accepts a unique `--series-number`. This is not a suitability assessment and never combines independent series.
+- CPU segmentation: Body envelopes, intensity thresholds, connected components, and seeded air propagation attempt lung, airway, dense intrapulmonary, and bone candidate layers. Empty or unsupported surface results can omit layers with warnings.
+- Label grid: `labels.npy` is a reduced-grid uint8 bitfield, with values `lungs=1`, `airways=2`, `vessels=4`, `bones=8`. `labels-grid.json` records its own stride and affine.
+- Source and surfaces: `volume.npy` preserves native-grid float32 HU; disposable `meshes/<layer-id>.json` contains flat RAS positions and triangle indices. Reduced-grid surfaces are not source-image evidence.
+- External annotations: `--annotations` accepts an external JSON array of positions and radii. IDs and free text are replaced with generic text. These are unverified spheres, not segmented lesions or automatically detected findings.
+- Video export: `render-video` captures the local viewer's full viewport, including controls and educational warnings, using headless Playwright Chromium and ffmpeg H.264 MP4 encoding. A timed orbit/tour and annotation-free source-slice sweep are implemented. Output is a new private MP4 inside the external workspace, with no overwrite. See [architecture](rfc.md#video-rendering) for transaction and option details.
 
-- Toggle lung, airway, and vessel candidate layers, with method, review status, and uncertainty visible.
-- Move axial, sagittal, coronal, or oblique cut planes without baked static shadows.
-- Select a 3D location and see corresponding native source slices, 0-based voxel indices, and physical coordinates. Distinguish interpolated renderings from original slice proof.
-- Follow a deterministic local `tour.json` with source-coordinate stops, camera targets, and layer visibility. Tour text teaches anatomy, not clinical interpretation.
+## Runtime API
 
-## CPU Baseline
+The server binds only to `127.0.0.1` and serves generic frontend assets plus these GET routes:
 
-The v1 baseline will use native Hounsfield Units (HU), thresholding, chest/body and lung masks, connected components, and seeded region growing. Vessel-like regions remain exploratory candidates constrained by chest/lung masks, not a complete vascular tree. Missing branches, leaks, and ambiguous regions must remain visible limitations; warning heuristics cannot detect every error.
-
-Import of externally reviewed labelmaps is planned, subject to grid alignment and provenance checks. No high-quality learned segmentation is promised without an explicitly supplied, licensed, and evaluated model. Heuristic scores must not appear as calibrated probabilities.
-
-## Privacy and Local Operation
-
-DICOM input is externally supplied and read-only to the tool. The output workspace is external. Repository, input root, and workspace must be pairwise disjoint after real-path resolution, including symlinks and missing leaves resolved through existing ancestors. Recheck before writes and reject output symlinks that escape the workspace. The [RFC](rfc.md) defines the planned enforcement contract.
-
-No medical assets, identifying case facts, or private derivatives belong in the repository, public frontend assets, docs, examples, logs, or CI. All synthetic fixtures are generated at test time outside the repository. Local logs use error codes and counts, not filenames, source paths, or header dumps.
-
-The planned server binds to `127.0.0.1`; v1 has no remote publication, tunnel, or non-loopback binding. It serves only explicitly allowed external workspace assets, never the input DICOM root or repository tree. The frontend contains generic code only, with no telemetry, CDN dependencies, or cloud tour service.
-
-## Phased Acceptance
-
-| Phase | Deliverable and Exit Criteria |
+| Route | Result |
 | --- | --- |
-| Scaffold, current | English docs, one skill, MIT license, offline hygiene tests and CI; no application claims. |
-| MVP, planned | Fail-closed paths and native geometry, CPU candidates, reviewed-label import, linked slices/3D, local guided tour. Selections reproduce known synthetic source coordinates; no study is embedded in app assets. |
-| QA, planned | Synthetic HU/oblique geometry roundtrips, independent series, path and symlink rejection, label import checks, CPU failure cases, and UI evidence. Separately authorized real-study review stays local and private. |
-| Video, stretch | Optional downstream Blender and `render-video`; reproduce tour stops and preserve uncertainty labels. No dependency on Blender for MVP or authoritative data. |
+| `/api/manifest` | Versioned geometry, candidate layers, annotations, warnings, source summary, and embedded tour. |
+| `/api/mesh/<layer-id>` | Flat RAS coordinates and triangle indices for a listed layer. |
+| `/api/slice?axis=axial&index=0&wc=-600&ww=1500` | Windowed 8-bit PNG with `X-Slice-Index`; axis also accepts `coronal` or `sagittal`. `wc` and `ww` are optional with these defaults. |
+| `/api/voxel?i=0&j=0&k=0` | Numeric `hu`, `lps`, and `ras` for an in-bounds native voxel. |
 
-Correct source linkage and honest candidate labeling take priority over mesh appearance. Performance and segmentation quality targets require later measurements; this scaffold claims neither.
+Indices in the examples illustrate syntax only. Raw volumes, labels, source DICOM, private provenance, and rendered MP4s have no serving route. The video browser separately allows only its exact loopback origin's GET/HEAD requests and blocks WebSockets and service workers; this is not an OS-wide network isolation claim.
+
+## Viewer Interactions
+
+- Three.js orbit, pan, and zoom with dynamic lighting and no baked shadows.
+- Independent candidate layer toggles and opacity controls.
+- Axial, coronal, and sagittal source-grid slice controls with windowing and voxel selection. Axial PNGs represent windowed acquired frames; other axes are cross-sections, not independently acquired images or world-axis reformats for oblique data.
+- 3D selection linked to the nearest source voxel, HU, 0-based `[i,j,k]`, and physical LPS/RAS coordinates. Out-of-grid selections are rejected rather than clamped.
+- RAS x/y/z clipping with uncapped-cut warnings. Cut openings are rendering boundaries, not anatomy.
+- A local tour with source-coordinate targets and candidate focus. The frontend expands a minimal manifest tour with available-layer and source-slice stops without duplicating a sufficiently complete tour. Interactive transitions depend on the current view; the video renderer separately supplies explicit frame times.
+
+Responsive controls are implemented. The coordinating maintainer verified desktop and mobile browser use with no console errors, including selection, clipping, and candidate focus, as well as successful video generation. These bounded checks do not establish high-fidelity masks or comprehensive cross-browser coverage.
+
+## Limits and Non-Goals
+
+Education and technical exploration only, not diagnosis, clinical advice, or treatment planning. No clinically validated viewer or trained segmentation model is provided. Candidate masks can leak, omit structures, and lose small branches through downsampling. Dense intrapulmonary candidates can contain nonvascular tissue; bone candidates can contain calcifications. No complete vasculature, artery-vein classification, or calibrated probabilities are promised.
+
+Video export via `render-video` is implemented. Reviewed labelmap import, arbitrary oblique clipping, and anatomical oblique resampling remain unsupported. Tour data is embedded in `manifest.json`, not a separate `tour.json`. The [RFC](rfc.md) describes the implementation; current source and CLI help define shipped interfaces.
+
+## Privacy and Paths
+
+Repository, input, and workspace must be pairwise disjoint after real-path resolution, including equality and ancestor relationships. For a build, the workspace parent must exist but the target must not. Each build iteration uses a fresh external workspace. `manifest.json` is published last as the completion marker; incomplete output must not be served. Video rendering uses a completed workspace and writes a new MP4 inside it.
+
+All runtime assets and case facts remain private and external, including sanitized derivatives. No raw patient data, derivatives, identifiers, private paths, or case facts belong in public repositories/history, assets, docs, PRs, issues, CI, or logs. Default to no uploads. GPT review requires explicit per-case user approval of material, purpose, and destination; build/test/release authorization is not upload consent. Agents cannot infer or self-grant it, and must stop before transmission if its scope is unspecified. This exception approves neither other providers nor public disclosure; the application has no upload route. See [privacy rules](../AGENTS.md#privacy-gate).
+
+Synthetic fixtures are generated outside the repository. `provenance.json` stores private source mappings and is never served. Host/Origin guards and no-store headers reduce exposure but are not authentication or full anonymization. No public hosting, tunnels, runtime CDN, telemetry, or cloud tour service is part of v0.1.
+
+## Acceptance and Backlog
+
+- Implemented baseline: `inspect`, `build`, `serve`, `render-video`, geometry-preserving HU, reduced-grid candidates, local viewer, and private publication. All 61 Python tests with encoder smoke and 27 frontend unit tests passed; details are in [test status](test.md).
+- Verified use: The coordinating maintainer reports successful authorized private generation, bounded desktop/mobile browser QA, and video generation. Mask quality remains a limitation, not a certified outcome. Each future input still needs task-specific review.
+- Deferred: Reviewed labelmap import with grid/provenance validation and oblique viewing extensions. Any future learned model needs explicit supply, licensing, and evaluation; it is not a promised v0.1 capability.
+
+Missing labels and missing warnings are not evidence of normal anatomy. Performance and quality claims require measurements, not inference from a successful build.
