@@ -10,7 +10,14 @@ import {
   defaultLayerOpacity,
   defaultLayerVisible,
   expandTour,
+  focusForStop,
+  isSelectionOnSlice,
+  moveSelectionToSlice,
+  slice3dDefaultForStop,
   tourFallbackTitle,
+  tourFitPad,
+  tourUsesLayerFit,
+  visibleIdsForTourStop,
   visibleLayerIds,
 } from "../src/state.js";
 
@@ -61,6 +68,7 @@ test("initial selection indices sit at volume midplanes", () => {
   assert.deepEqual(state.index, { axial: 4, coronal: 3, sagittal: 5 });
   assert.equal(state.tourIndex, -1);
   assert.equal(state.clip.enabled, false);
+  assert.equal(state.showSlice3d, false);
 });
 
 test("selecting a voxel drives all three native slice indices", () => {
@@ -100,9 +108,9 @@ test("clip state stores RAS axis and world value", () => {
 });
 
 test("tour fallback titles stay educational and non-diagnostic", () => {
-  assert.equal(tourFallbackTitle("vascular-candidates"), "Vascular Candidate Geometry");
-  assert.equal(tourFallbackTitle("case-candidate"), "Algorithmic Candidate Region");
-  assert.equal(tourFallbackTitle("source-evidence"), "Native Slice Comparison");
+  assert.equal(tourFallbackTitle("vascular-candidates"), "Tracing Vessel Candidates");
+  assert.equal(tourFallbackTitle("case-candidate"), "Unverified Candidate Mark");
+  assert.equal(tourFallbackTitle("source-evidence"), "Native Source Slice");
 });
 
 test("minimal API tour is expanded with educational layer and source stops", () => {
@@ -119,10 +127,34 @@ test("minimal API tour is expanded with educational layer and source stops", () 
   assert.ok(ids.includes("fallback-vascular"));
   assert.equal(stops.find((stop) => stop.id === "tour-candidate-1").annotation_id, "c1");
   assert.ok(ids.includes("fallback-source-evidence"));
-  assert.equal(defaultLayerOpacity("lungs"), 0.46);
-  assert.equal(defaultLayerOpacity("airways"), 0.92);
+  assert.equal(defaultLayerOpacity("lungs"), 0.36);
+  assert.equal(defaultLayerOpacity("airways"), 0.88);
   assert.equal(defaultLayerVisible("vessels"), false);
   assert.equal(defaultLayerVisible("lungs"), true);
+  const candidate = stops.find((stop) => stop.id === "tour-candidate-1");
+  assert.equal(slice3dDefaultForStop(candidate), true);
+  assert.equal(slice3dDefaultForStop(stops[0]), false);
+  assert.ok(!visibleIdsForTourStop({ ...candidate, layer_ids: ["lungs", "bones"] }).includes("bones"));
+  assert.equal(focusForStop(stops.find((stop) => stop.id === "fallback-lungs")).title, "Air Spaces");
+});
+
+test("slice index change moves selection along that axis and drops stale HU", () => {
+  const selection = { i: 2, j: 3, k: 6, hu: -31, error: null };
+  const moved = moveSelectionToSlice(selection, "axial", 4);
+  assert.deepEqual([moved.i, moved.j, moved.k], [2, 3, 4]);
+  assert.equal(moved.hu, undefined);
+  assert.equal(isSelectionOnSlice(selection, "axial", 4), false);
+  assert.equal(isSelectionOnSlice(moved, "axial", 4), true);
+});
+
+test("vascular tour fallback is not centered on an annotation", () => {
+  const data = manifest();
+  const vessel = expandTour(data).find((stop) => stop.id === "fallback-vascular");
+  assert.deepEqual(vessel.target_ras, [4.5, 2.5, 7]);
+  assert.equal(vessel.annotation_id, undefined);
+  assert.equal(tourUsesLayerFit(vessel), true);
+  assert.ok(tourFitPad({ id: "fallback-airways" }) > tourFitPad({ id: "overview" }));
+  assert.equal(tourUsesLayerFit({ id: "tour-candidate-1", annotation_id: "c1" }), false);
 });
 
 test("complete API tour is kept without duplicate fallbacks", () => {

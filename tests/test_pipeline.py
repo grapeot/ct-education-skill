@@ -13,6 +13,7 @@ from unittest.mock import patch
 import zipfile
 
 import numpy as np
+from scipy import ndimage as ndi
 from PIL import Image
 from pydicom import dcmread
 from pydicom.dataset import FileDataset, FileMetaDataset
@@ -23,7 +24,7 @@ from ct_education.cli import main
 from ct_education.dicom import Collection, decode_hu, validate_stack
 from ct_education.pipeline import annotations_from_file, build, ras_bounds
 from ct_education.safety import REPO, PipelineError, boundaries, disjoint, local_file
-from ct_education.segmentation import mesh_for_mask, segment
+from ct_education.segmentation import LAYER_INFO, airway_candidates, mesh_for_mask, physical_disk, segment
 from ct_education.server import create_server, render_slice
 
 
@@ -78,6 +79,27 @@ def write_series(root, volume=None, number=7, orientation=None, displacement=Non
         ds.PixelData = ((volume[k].astype(np.int32) + 1000) // 2).astype("<i2").tobytes()
         ds.save_as(root / f"frame-{len(volume) - k:04d}.dcm", enforce_file_format=True)
     return volume
+
+
+def branching_airway_phantom(leak=False):
+    k, j, i = np.indices((64, 96, 96))
+    body = ((i - 48) / 44) ** 2 + ((j - 48) / 43) ** 2 < 1
+    lungs = ((((i - 20) / 12) ** 2 + ((j - 65) / 19) ** 2 < 1)
+             | (((i - 76) / 12) ** 2 + ((j - 65) / 19) ** 2 < 1)) & body
+    trunk = ((i - 48) ** 2 + (j - 35) ** 2 <= 16) & (k >= 40)
+    offset = np.maximum(0, 40 - k) * 0.75
+    branches = (((i - (48 - offset)) ** 2 + (j - 35) ** 2 <= 6.25)
+                 | ((i - (48 + offset)) ** 2 + (j - 35) ** 2 <= 6.25)) & (k >= 12) & (k < 40)
+    airway = trunk | branches
+    volume = np.full(k.shape, -1000, dtype=np.float32)
+    volume[body] = 30
+    volume[lungs | airway] = -950
+    if leak:
+        for plane in range(12, 24):
+            for x, target in ((int(round(48 - (40 - plane) * 0.75)), 20), (int(round(48 + (40 - plane) * 0.75)), 76)):
+                volume[plane, 35:66, x] = -950
+                volume[plane, 65, min(x, target):max(x, target) + 1] = -950
+    return volume, body, airway, lungs, np.diag([1.5, 1.5, 2.0, 1])
 
 
 class PipelineTests(unittest.TestCase):
@@ -375,6 +397,114 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(mask.shape, volume[::stride[0], ::stride[1], ::stride[2]].shape)
             self.assertFalse(mask.any())
         self.assertTrue(any("omitted" in message for message in messages))
+
+    def test_y_airway_recovers_both_branches_without_native_changes(self):
+        volume, body, expected, lungs, affine = branching_airway_phantom()
+        original = volume.copy()
+        volume.flags.writeable = False
+        masks, label_affine, stride, messages = segment(volume, affine)
+        airway = masks["airways"]
+        self.assertEqual(list(LAYER_INFO), ["lungs", "airways", "vessels", "bones"])
+        np.testing.assert_array_equal(stride, [1, 1, 1])
+        np.testing.assert_array_equal(label_affine, affine)
+        np.testing.assert_array_equal(volume, original)
+        np.testing.assert_array_equal(airway, expected)
+        self.assertEqual(ndi.label(airway, np.ones((3, 3, 3)))[1], 1)
+        self.assertEqual(ndi.label(airway[16], np.ones((3, 3)))[1], 2)
+        self.assertFalse((airway & lungs).any())
+        self.assertFalse((airway & ~body).any())
+        self.assertFalse((airway & masks["lungs"]).any())
+        self.assertFalse(any("no sustained bifurcation" in message for message in messages))
+        repeated, _, _, _ = segment(volume, affine)
+        np.testing.assert_array_equal(repeated["airways"], airway)
+
+    def test_y_airway_stops_before_connected_giant_lung_pockets(self):
+        volume, body, expected, lungs, affine = branching_airway_phantom(leak=True)
+        airway, messages = airway_candidates(volume, body, affine)
+        self.assertFalse((airway & lungs).any())
+        self.assertFalse((airway & ~expected).any())
+        self.assertFalse(airway[:24].any())
+        np.testing.assert_array_equal(airway[24:], expected[24:])
+        self.assertEqual(ndi.label(airway, np.ones((3, 3, 3)))[1], 1)
+        self.assertTrue(any("inseparable air pockets" in message for message in messages))
+
+    def test_diagonal_airway_connections_survive_final_component_filter(self):
+        volume = np.full((24, 48, 48), 30, dtype=np.float32)
+        body = np.zeros_like(volume, dtype=bool)
+        body[:, 4:44, 4:44] = True
+        expected = np.zeros_like(body)
+        expected[18:, 19:21, 23:25] = True
+        for k in range(9, 18):
+            expected[k, 20 - (17 - k), 24 - (17 - k)] = True
+        volume[expected] = -950
+        airway, messages = airway_candidates(volume, body, np.diag([2, 2, 2, 1]))
+        np.testing.assert_array_equal(airway, expected)
+        self.assertGreater(ndi.label(airway)[1], 1)
+        self.assertEqual(ndi.label(airway, np.ones((3, 3, 3)))[1], 1)
+        self.assertTrue(any("no sustained bifurcation" in message for message in messages))
+
+    def test_airway_volume_limit_discards_broad_growth(self):
+        k, j, i = np.indices((100, 64, 64))
+        radius = np.where(k >= 98, 3, 6)
+        air = (j - 32) ** 2 + (i - 32) ** 2 <= radius ** 2
+        volume = np.full(k.shape, 30, dtype=np.float32)
+        volume[air] = -950
+        body = np.ones_like(air)
+        affine = np.diag([2, 2, 5, 1])
+        self.assertGreater(air.sum() * abs(np.linalg.det(affine[:3, :3])), 80_000)
+        airway, messages = airway_candidates(volume, body, affine)
+        self.assertFalse(airway[:98].any())
+        np.testing.assert_array_equal(airway[98:], air[98:])
+        self.assertTrue(any("growth exceeded" in message for message in messages))
+
+    def test_airway_superior_seed_follows_affine_not_array_direction(self):
+        volume, body, expected, _, affine = branching_airway_phantom()
+        reversed_affine = affine.copy()
+        reversed_affine[:3, 3] += affine[:3, 2] * (len(volume) - 1)
+        reversed_affine[:3, 2] *= -1
+        airway, _ = airway_candidates(volume[::-1], body[::-1], reversed_affine)
+        np.testing.assert_array_equal(airway, expected[::-1])
+
+    def test_fragmented_lung_air_cannot_supply_airway_seed(self):
+        k, j, i = np.indices((24, 64, 64))
+        body = np.ones(k.shape, dtype=bool)
+        volume = np.full(k.shape, 30, dtype=np.float32)
+        volume[(j - 32) ** 2 + (i - 32) ** 2 < 15 ** 2] = -750
+        volume[(j - 32) ** 2 + (i - 32) ** 2 < 3 ** 2] = -950
+        airway, messages = airway_candidates(volume, body, np.diag([2, 2, 2, 1]))
+        self.assertFalse(airway.any())
+        self.assertTrue(any("no supported superior seed" in message for message in messages))
+
+    def test_physical_morphology_footprint_respects_anisotropic_spacing(self):
+        footprint = physical_disk([1, 2], 1.5)
+        j, i = np.argwhere(footprint).T - (np.asarray(footprint.shape) // 2)[:, None]
+        self.assertTrue(((j ** 2 + (2 * i) ** 2) <= 1.5 ** 2).all())
+        self.assertEqual(int(footprint.sum()), 3)
+        self.assertEqual(int(physical_disk([2, 2], 1.5).sum()), 1)
+
+    def test_display_smoothing_is_bounded_deterministic_and_labels_unchanged(self):
+        k, j, i = np.indices((18, 18, 18))
+        mask = (i - 8) ** 2 + (j - 8) ** 2 + (k - 8) ** 2 <= 36
+        original = mask.copy()
+        affine = np.array([[1, 0, 0.2, 10], [0, 1.5, 0, 20], [0, 0, 2, 30], [0, 0, 0, 1]])
+        raw = mesh_for_mask(mask, affine, smooth=False)
+        smooth = mesh_for_mask(mask, affine)
+        np.testing.assert_array_equal(mask, original)
+        self.assertEqual(raw["indices"], smooth["indices"])
+        self.assertEqual(smooth, mesh_for_mask(mask, affine))
+        vertices = np.array(smooth["positions"]).reshape(-1, 3)
+        raw_vertices = np.array(raw["positions"]).reshape(-1, 3)
+        motion = np.linalg.norm(vertices - raw_vertices, axis=1)
+        self.assertGreater(motion.max(), 0)
+        limit = min(0.75, 0.35 * np.linalg.svd(affine[:3, :3], compute_uv=False).min())
+        self.assertLessEqual(motion.max(), limit + 0.0002)
+        bounds = ras_bounds(mask.shape, np.diag([-1, -1, 1, 1]) @ affine)
+        self.assertTrue((vertices >= np.asarray(bounds["min"]) - 0.0002).all())
+        self.assertTrue((vertices <= np.asarray(bounds["max"]) + 0.0002).all())
+        faces = np.array(smooth["indices"]).reshape(-1, 3)
+        raw_area = np.linalg.norm(np.cross(raw_vertices[faces[:, 1]] - raw_vertices[faces[:, 0]], raw_vertices[faces[:, 2]] - raw_vertices[faces[:, 0]]), axis=1).sum()
+        smooth_area = np.linalg.norm(np.cross(vertices[faces[:, 1]] - vertices[faces[:, 0]], vertices[faces[:, 2]] - vertices[faces[:, 0]]), axis=1).sum()
+        self.assertLess(smooth_area, raw_area)
 
     def test_annotations_validate_and_sanitize(self):
         annotation_file = self.root / "annotations.json"

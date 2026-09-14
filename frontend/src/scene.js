@@ -95,15 +95,16 @@ export class ObservatoryScene {
       this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
     }
 
-    this.scene.add(new THREE.AmbientLight(0xf3ead8, 0.28));
-    const key = new THREE.DirectionalLight(0xfff6e8, 0.9);
-    key.position.set(220, -260, 410);
+    this.scene.add(new THREE.HemisphereLight(0xf3ead8, 0x12161c, 0.42));
+    this.scene.add(new THREE.AmbientLight(0xf3ead8, 0.16));
+    const key = new THREE.DirectionalLight(0xfff6e8, 1.05);
+    key.position.set(180, -220, 360);
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0x9bb7c9, 0.28);
-    fill.position.set(-210, 140, 90);
+    const fill = new THREE.DirectionalLight(0x9bb7c9, 0.32);
+    fill.position.set(-240, 160, 70);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0x2ec9c0, 0.16);
-    rim.position.set(40, 240, -120);
+    const rim = new THREE.DirectionalLight(0x2ec9c0, 0.28);
+    rim.position.set(30, 260, -90);
     this.scene.add(rim);
 
     this._addBounds();
@@ -124,13 +125,14 @@ export class ObservatoryScene {
       map: null,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.58,
       depthWrite: false,
       toneMapped: false,
     });
     this.sliceMesh = new THREE.Mesh(this.sliceGeometry, this.sliceMaterial);
     this.sliceMesh.userData = { type: "slice" };
     this.sliceMesh.renderOrder = 1;
+    this.sliceMesh.visible = false;
     this.scene.add(this.sliceMesh);
 
     this.edgeGeom = new THREE.BufferGeometry();
@@ -140,6 +142,7 @@ export class ObservatoryScene {
       this.edgeGeom,
       new THREE.LineBasicMaterial({ color: 0xf3ead8, transparent: true, opacity: 0.55 }),
     );
+    this.edgeLines.visible = false;
     this.scene.add(this.edgeLines);
 
     this.selectionMarker = new THREE.Group();
@@ -233,10 +236,43 @@ export class ObservatoryScene {
     this.clipHelper.scale.setScalar(span);
   }
 
+  unionLayerBounds(ids) {
+    let box = null;
+    for (const id of ids || []) {
+      const mesh = this.layerMeshes.get(id);
+      if (!mesh || !mesh.visible) continue;
+      mesh.geometry.computeBoundingBox();
+      const next = mesh.geometry.boundingBox;
+      if (!next) continue;
+      box = box ? box.union(next.clone()) : next.clone();
+    }
+    return box;
+  }
+
+  fitBox(box, pad = 1.22) {
+    if (!box) {
+      this.fitBounds();
+      return;
+    }
+    const min = box.min;
+    const max = box.max;
+    const center = min.clone().add(max).multiplyScalar(0.5);
+    const radius = Math.max(max.clone().sub(min).length() * 0.5, 8);
+    const dist = Math.max(
+      (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov) / 2)) * pad,
+      40,
+    );
+    const dir = new THREE.Vector3(0.62, -0.9, 0.42).normalize();
+    this.flyTo([center.x, center.y, center.z], dist);
+    this.orbit.height = Math.max((max.z - min.z) * 0.2, 10);
+    this.camera.near = Math.max(0.2, dist / 250);
+    this.camera.far = dist * 24;
+    this.camera.updateProjectionMatrix();
+  }
+
   resize() {
-    const parent = this.canvas.parentElement || this.canvas;
-    const width = Math.max(1, parent.clientWidth);
-    const height = Math.max(1, parent.clientHeight);
+    const width = Math.max(1, this.canvas.clientWidth);
+    const height = Math.max(1, this.canvas.clientHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
@@ -356,6 +392,13 @@ export class ObservatoryScene {
     }
   }
 
+  setSlice3dVisible(visible) {
+    const on = Boolean(visible);
+    this.sliceMesh.visible = on;
+    this.edgeLines.visible = on;
+    this._rebuildPickables();
+  }
+
   setSelectionMarker(ras) {
     if (!ras) {
       this.selectionMarker.visible = false;
@@ -398,18 +441,25 @@ export class ObservatoryScene {
     geometry.setIndex(meshData.indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
+    const color = layerColor(layer, order);
+    const kind = String(layer.id || "").toLowerCase();
+    const airway = kind.includes("airway");
+    const lung = kind.includes("lung");
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(layerColor(layer, order)),
-      roughness: 0.58,
-      metalness: 0.06,
+      color: new THREE.Color(color),
+      roughness: airway ? 0.32 : lung ? 0.8 : 0.52,
+      metalness: airway ? 0.14 : 0.04,
       transparent: true,
       opacity: layer.opacity,
       side: THREE.DoubleSide,
-      depthWrite: layer.opacity > 0.9,
+      depthWrite: layer.opacity > 0.92,
       clippingPlanes: this.renderer.localClippingEnabled ? [this.clipPlane] : [],
       clipShadows: false,
-      emissive: new THREE.Color(layerColor(layer, order)),
-      emissiveIntensity: String(layer.id || "").toLowerCase().includes("airway") ? 0.14 : 0.05,
+      emissive: new THREE.Color(color),
+      emissiveIntensity: airway ? 0.2 : lung ? 0.025 : 0.05,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.userData = { type: "layer", id: layer.id };
@@ -499,7 +549,8 @@ export class ObservatoryScene {
   }
 
   _rebuildPickables() {
-    this.pickables = [this.sliceMesh, ...this.annotationGroup.children];
+    this.pickables = [...this.annotationGroup.children];
+    if (this.sliceMesh.visible) this.pickables.push(this.sliceMesh);
     for (const mesh of this.layerMeshes.values()) {
       if (mesh.visible) this.pickables.push(mesh);
     }

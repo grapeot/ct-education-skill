@@ -1,7 +1,7 @@
 import { copy } from "./copy.js";
 import { formatNumber } from "./affine.js";
 import { sliceExtent } from "./mapping.js";
-import { FALLBACK_LAYER_COLORS, tourFallbackTitle } from "./state.js";
+import { FALLBACK_LAYER_COLORS, layerHintForId, tourFallbackTitle } from "./state.js";
 import { isCssHexColor } from "./validate.js";
 
 function escapeHtml(value) {
@@ -20,8 +20,15 @@ export function mountApp(root) {
           <p class="kicker">${escapeHtml(copy.appKicker)}</p>
           <h1>${escapeHtml(copy.appTitle)}</h1>
         </div>
-        <p class="disclaimer">${escapeHtml(copy.disclaimer)}</p>
-        <p class="color-note">${escapeHtml(copy.colorNote)}</p>
+        <p class="banner">${escapeHtml(copy.banner)}</p>
+        <details class="notes-fold">
+          <summary>${escapeHtml(copy.notesSummary)}</summary>
+          <p>${escapeHtml(copy.disclaimer)}</p>
+          <p>${escapeHtml(copy.colorNote)}</p>
+          <p>${escapeHtml(copy.coordNote)}</p>
+          <p>${escapeHtml(copy.candidates.notDiagnosis)}</p>
+          <ul class="warnings" data-ref="warnings"></ul>
+        </details>
         <div class="stats" data-ref="stats" role="status">${escapeHtml(copy.stats.loadingManifest)}</div>
       </header>
       <aside class="rail rail-left">
@@ -55,11 +62,21 @@ export function mountApp(root) {
         `)}
       </aside>
       <section class="stage">
+        <div class="stage-chrome">
+          <div class="focus-card" data-ref="focus-card">
+            <p class="focus-title" data-ref="focus-title">${escapeHtml(copy.focus.overviewTitle)}</p>
+            <p class="focus-body" data-ref="focus-body">${escapeHtml(copy.focus.overviewBody)}</p>
+          </div>
+          <div class="stage-actions">
+            <label class="check slice3d-toggle">
+              <input type="checkbox" data-ref="slice3d" />
+              <span>${escapeHtml(copy.showSlice3d)}</span>
+            </label>
+            <button type="button" data-ref="reset">${escapeHtml(copy.buttons.resetView)}</button>
+          </div>
+        </div>
         <canvas id="view3d" data-ref="view3d" role="img" aria-label="${escapeHtml(copy.a11y.viewer)}"></canvas>
         <div class="stage-readout" data-ref="readout">${escapeHtml(copy.readout.noSelection)}</div>
-        <div class="stage-actions">
-          <button type="button" data-ref="reset">${escapeHtml(copy.buttons.resetView)}</button>
-        </div>
       </section>
       <aside class="rail rail-right">
         ${panel("slice", copy.panels.slice, copy.accordion.slice, `
@@ -74,7 +91,7 @@ export function mountApp(root) {
             <span class="ori ori-left" data-ref="ori-left"></span>
             <span class="ori ori-right" data-ref="ori-right"></span>
             <span class="ori ori-bottom" data-ref="ori-bottom"></span>
-            <div class="slice-stack">
+            <div class="slice-stack" data-ref="slice-stack">
               <canvas data-ref="slice-canvas" role="img" aria-label="${escapeHtml(copy.a11y.sliceImage)}"></canvas>
               <canvas data-ref="slice-overlay"></canvas>
             </div>
@@ -95,12 +112,11 @@ export function mountApp(root) {
           <p class="note hidden" data-ref="axis-fallback">${escapeHtml(copy.slice.sourceAxisFallback)}</p>
         `)}
         ${panel("candidates", copy.panels.candidates, copy.accordion.candidates, `
-          <p class="note">${escapeHtml(copy.candidates.notDiagnosis)}</p>
           <div class="stack" data-ref="candidates"></div>
         `)}
         ${panel("notes", copy.panels.notes, copy.accordion.notes, `
-          <p class="note">${escapeHtml(copy.coordNote)}</p>
-          <ul class="warnings" data-ref="warnings"></ul>
+          <p class="note">${escapeHtml(copy.slice.nativeNote)}</p>
+          <p class="note">${escapeHtml(copy.clip.uncappedWarning)}</p>
         `)}
       </aside>
       <div class="fatal hidden" data-ref="fatal" role="alert">
@@ -121,7 +137,21 @@ export function mountApp(root) {
       button.setAttribute("aria-label", open ? copy.a11y.closePanel : copy.a11y.openPanel);
     });
   });
+  applyMobileAccordions(root);
   return refs;
+}
+
+export function applyMobileAccordions(root) {
+  const mobile = window.matchMedia("(max-width: 900px)").matches;
+  root.querySelectorAll(".panel").forEach((panel) => {
+    const keepOpen = !mobile || panel.getAttribute("data-panel") === "slice";
+    panel.classList.toggle("open", keepOpen);
+    const button = panel.querySelector("[data-acc]");
+    if (button) {
+      button.setAttribute("aria-expanded", keepOpen ? "true" : "false");
+      button.setAttribute("aria-label", keepOpen ? copy.a11y.closePanel : copy.a11y.openPanel);
+    }
+  });
 }
 
 function panel(id, title, accordion, body) {
@@ -144,8 +174,8 @@ export function renderStats(refs, { status, meshCount, candidateCount, sliceCoun
   parts.push(`${copy.stats.meshCount}: ${meshCount}`);
   parts.push(`${copy.stats.candidateCount}: ${candidateCount}`);
   parts.push(`${copy.stats.sliceCount}: ${sliceCount}`);
-  if (warningCount) parts.push(`${copy.stats.warningsPresent}: ${warningCount}`);
   refs.stats.textContent = parts.join(" | ");
+  void warningCount;
 }
 
 export function renderLayers(refs, manifest, state, handlers) {
@@ -164,6 +194,7 @@ export function renderLayers(refs, manifest, state, handlers) {
         <span class="swatch" style="background:${escapeHtml(color)}"></span>
         <span>${escapeHtml(layer.name || layer.id)}</span>
       </label>
+      <p class="hint">${escapeHtml(layerHintForId(layer.id))}</p>
       <p class="meta">${escapeHtml(layer.review_status || copy.layers.educationalColor)}</p>
       <label class="slider">
         <span>${escapeHtml(copy.layers.opacity)}</span>
@@ -288,12 +319,23 @@ export function renderReadout(refs, selection) {
   ].join(" | ");
 }
 
+export function applySliceAspect(refs, aspect) {
+  if (!refs["slice-stack"]) return;
+  refs["slice-stack"].style.setProperty("--slice-aspect", String(aspect));
+}
+
 export function renderOrientation(refs, labels) {
   refs["ori-top"].textContent = labels.top;
   refs["ori-left"].textContent = labels.left;
   refs["ori-right"].textContent = labels.right;
   refs["ori-bottom"].textContent = labels.bottom;
   refs["axis-fallback"].classList.toggle("hidden", labels.mode !== "source-axis");
+}
+
+export function renderFocus(refs, stop) {
+  const { title, body } = stop || { title: copy.focus.overviewTitle, body: copy.focus.overviewBody };
+  refs["focus-title"].textContent = title;
+  refs["focus-body"].textContent = body;
 }
 
 export function syncSliceControls(refs, state, shape) {
@@ -306,6 +348,7 @@ export function syncSliceControls(refs, state, shape) {
   refs["slice-axis"].querySelectorAll("input").forEach((input) => {
     input.checked = input.value === state.axis;
   });
+  if (refs.slice3d) refs.slice3d.checked = Boolean(state.showSlice3d);
 }
 
 export function syncClipControls(refs, state, bounds) {

@@ -15,17 +15,21 @@ CT Education Skill is a local educational chest CT application and coding agent 
 The heuristic pipeline attempts four candidate layers. Empty masks or unsupported surface extraction can omit a layer; inspect the warnings rather than assuming missing anatomy is absent from the source.
 
 - Lung candidates: Thresholded interior air envelopes; incomplete coverage and altered tissue can cause omissions.
-- Airway candidates: Connected low-HU regions seeded in a superior central air pocket, not a complete airway tree.
+- Airway candidates: Bounded low-HU growth from a superior central seed can recover branching candidates. Branch identity and completeness remain unverified.
 - Dense intrapulmonary candidates: Dense regions inside eroded lung envelopes; these can include nonvascular tissue.
 - Bone candidates: High-HU body components; these can include calcifications and other dense material.
 
 The viewer supports orbit/pan/zoom, layer visibility and opacity, linked slice and voxel selection, window controls, candidate focus, and a local guided tour. RAS x/y/z clipping uses dynamic lighting without baked shadows. Cuts are visibly uncapped: holes at cut boundaries do not represent anatomy.
+
+The optional 3D native-slice plane defaults off for overview/anatomy, while the 2D source panel remains available. Anatomy tour cameras fit the requested layer bounds; candidate focus is separate. Mobile control panels collapse to leave more room for the scene and source panel.
 
 ## Source Images and Surfaces
 
 Native source data is preserved as float32 Hounsfield Units (HU) in `volume.npy`, on the source grid `[k,j,i]` without spatial downsampling. Axial views are display-windowed 8-bit PNGs of the selected acquired frame, not original DICOM bytes. Coronal and sagittal views are source-grid cross-sections, not independent acquisitions or anatomical world-axis reformats for oblique data. Numerical HU remains available through voxel selection.
 
 Surfaces are disposable approximations extracted from reduced-grid masks with their own affine and stride. Downsampling can lose small branches; a smooth surface does not prove anatomical completeness or source-image detail. Do not compare native and label-grid array indices directly. The viewer reports 0-based `[i,j,k]` and physical LPS/RAS coordinates in millimeters.
+
+Surfaces now use bounded display-only smoothing; native HU and label arrays are unchanged by that pass. Do not use smoothed surfaces for diagnostic size measurements. Coronal/sagittal 2D views use physical aspect ratios and superior-up presentation, with inverse click mapping. Backend PNG arrays and 3D texture orientation remain unchanged; display scaling and row reversal do not create new source detail or anatomical oblique reformats.
 
 ## Installation
 
