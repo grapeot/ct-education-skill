@@ -132,11 +132,44 @@ export function sliceOrientationLabels(axis, index, shape, affineRas) {
   return labels;
 }
 
+export function sliceDisplayOrientationLabels(axis, index, shape, affineRas, flipRows) {
+  const labels = sliceOrientationLabels(axis, index, shape, affineRas);
+  if (!flipRows) return labels;
+  return {
+    ...labels,
+    top: labels.bottom,
+    bottom: labels.top,
+  };
+}
+
 export function inPlaneSpacing(axis, affineRas) {
   const lengths = affineAxisLengths(affineRas);
   if (axis === "axial") return { col: lengths.i, row: lengths.j };
   if (axis === "coronal") return { col: lengths.i, row: lengths.k };
   return { col: lengths.j, row: lengths.k };
+}
+
+export function slicePhysicalAspect(axis, shape, affineRas) {
+  const extent = sliceExtent(axis, shape);
+  const spacing = inPlaneSpacing(axis, affineRas);
+  return (extent.width * spacing.col) / Math.max(extent.height * spacing.row, 1e-8);
+}
+
+export function shouldFlipDisplayRows(axis, affineRas) {
+  if (axis === "axial") return false;
+  return affineRas[2][2] > 0;
+}
+
+export function nativeRowToDisplay(row, height, flipRows) {
+  return flipRows ? height - 1 - row : row;
+}
+
+export function displayRowToNative(row, height, flipRows) {
+  return flipRows ? height - 1 - row : row;
+}
+
+export function displayPixelToVoxel(axis, index, col, row, height, flipRows) {
+  return slicePixelToVoxel(axis, index, col, displayRowToNative(row, height, flipRows));
 }
 
 export function pointPlaneDistance(point, corners) {

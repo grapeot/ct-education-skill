@@ -2,8 +2,10 @@ import { blobToCanvas, createApi } from "./api.js";
 import { rasToVoxel, voxelToRas } from "./affine.js";
 import { copy } from "./copy.js";
 import {
-  sliceOrientationLabels,
-  slicePixelToVoxel,
+  displayPixelToVoxel,
+  shouldFlipDisplayRows,
+  sliceDisplayOrientationLabels,
+  slicePhysicalAspect,
   voxelToSlicePixel,
 } from "./mapping.js";
 import { drawSliceOverlay, drawSliceView, eventToPixel } from "./overlay.js";
@@ -20,8 +22,17 @@ import {
   setSliceIndex,
   setTourStep,
   expandTour,
+  focusForStop,
+  isSelectionOnSlice,
+  moveSelectionToSlice,
+  setShowSlice3d,
+  slice3dDefaultForStop,
+  tourFitPad,
+  tourUsesLayerFit,
+  visibleIdsForTourStop,
 } from "./state.js";
 import {
+  applySliceAspect,
   hideFatal,
   mountApp,
   renderCandidates,
@@ -31,6 +42,7 @@ import {
   renderStats,
   renderTour,
   renderWarnings,
+  renderFocus,
   showFatal,
   syncClipControls,
   syncSliceControls,
@@ -49,6 +61,7 @@ let sliceSource = null;
 let pointerDown = null;
 let resizeObserver = null;
 let tourStops = [];
+let voxelSeq = 0;
 
 function statsPayload(status) {
   return {
@@ -71,13 +84,20 @@ function refreshChrome() {
 }
 
 function overlayPixel() {
-  if (!state || !state.selection || state.selection.i == null) return null;
+  if (!state || !manifest) return null;
+  if (!isSelectionOnSlice(state.selection, state.axis, state.index[state.axis])) return null;
   return voxelToSlicePixel(state.axis, state.selection);
+}
+
+function currentFlip() {
+  return shouldFlipDisplayRows(state.axis, manifest.affine_ras);
 }
 
 function paintSlice() {
   if (!refs || !sliceSource || !manifest) return;
-  drawSliceView(refs["slice-canvas"], sliceSource);
+  const flipRows = currentFlip();
+  applySliceAspect(refs, slicePhysicalAspect(state.axis, manifest.shape, manifest.affine_ras));
+  drawSliceView(refs["slice-canvas"], sliceSource, { flipRows });
   drawSliceOverlay(refs["slice-overlay"], {
     sourceWidth: sliceSource.width,
     sourceHeight: sliceSource.height,
@@ -87,10 +107,17 @@ function paintSlice() {
     index: state.index[state.axis],
     affineRas: manifest.affine_ras,
     shape: manifest.shape,
+    flipRows,
   });
   renderOrientation(
     refs,
-    sliceOrientationLabels(state.axis, state.index[state.axis], manifest.shape, manifest.affine_ras),
+    sliceDisplayOrientationLabels(
+      state.axis,
+      state.index[state.axis],
+      manifest.shape,
+      manifest.affine_ras,
+      flipRows,
+    ),
   );
 }
 
@@ -118,15 +145,17 @@ async function refreshSlice() {
 }
 
 async function applyVoxelSelection(i, j, k, rasHint) {
+  const seq = (voxelSeq += 1);
   state = selectVoxel(state, i, j, k, manifest.shape);
+  refreshChrome();
+  paintSlice();
   if (state.selection.error === "outOfBounds") {
     if (scene) scene.setSelectionMarker(rasHint || null);
-    refreshChrome();
-    paintSlice();
     return state.selection;
   }
   try {
     const voxel = await api.voxel(state.selection.i, state.selection.j, state.selection.k);
+    if (seq !== voxelSeq) return state.selection;
     state.selection = {
       ...state.selection,
       hu: voxel.hu,
@@ -134,14 +163,17 @@ async function applyVoxelSelection(i, j, k, rasHint) {
       ras: voxel.ras || voxelToRas(manifest.affine_ras, state.selection.i, state.selection.j, state.selection.k),
     };
   } catch {
+    if (seq !== voxelSeq) return state.selection;
     state.selection = {
       ...state.selection,
       error: "voxelError",
       ras: voxelToRas(manifest.affine_ras, state.selection.i, state.selection.j, state.selection.k),
     };
   }
+  if (seq !== voxelSeq) return state.selection;
   if (scene) scene.setSelectionMarker(state.selection.ras);
   await refreshSlice();
+  if (seq !== voxelSeq) return state.selection;
   refreshChrome();
   paintSlice();
   return state.selection;
@@ -187,22 +219,28 @@ async function goTour(index) {
   renderTour(refs, tour, state.tourIndex, goTour);
   if (state.tourIndex < 0) return;
   const stop = tour[state.tourIndex];
-  if (Array.isArray(stop.layer_ids)) {
+  const layerIds = visibleIdsForTourStop(stop);
+  if (Array.isArray(layerIds)) {
     for (const layer of state.layers) {
-      const visible = stop.layer_ids.includes(layer.id);
+      const visible = layerIds.includes(layer.id);
       state = setLayerVisible(state, layer.id, visible);
       if (scene) scene.setLayerAppearance(layer.id, { visible });
     }
     renderLayers(refs, manifest, state, { onToggle, onOpacity });
   }
-  if (stop.annotation_id) await focusAnnotation(stop.annotation_id, false);
-  const target =
-    stop.target_ras ||
-    (stop.annotation_id &&
-      manifest.annotations.find((item) => item.id === stop.annotation_id)?.position_ras);
-  if (target) {
-    lookAt(target, boundDistance());
-    if (!stop.annotation_id) await selectRas(target);
+  state = setShowSlice3d(state, slice3dDefaultForStop(stop));
+  if (scene) scene.setSlice3dVisible(state.showSlice3d);
+  if (refs.slice3d) refs.slice3d.checked = state.showSlice3d;
+  renderFocus(refs, focusForStop(stop));
+  if (tourUsesLayerFit(stop) && scene) {
+    const box = scene.unionLayerBounds(layerIds || []);
+    if (box) scene.fitBox(box, tourFitPad(stop));
+    else if (stop.target_ras) lookAt(stop.target_ras, boundDistance());
+  } else if (stop.annotation_id) {
+    await focusAnnotation(stop.annotation_id, true);
+    return;
+  } else if (stop.target_ras) {
+    lookAt(stop.target_ras, boundDistance());
   }
 }
 
@@ -267,6 +305,9 @@ function exposeHooks() {
     get tourLength() {
       return tourStops.length;
     },
+    get showSlice3d() {
+      return Boolean(state && state.showSlice3d);
+    },
     selectSource,
     renderFrame(t) {
       if (scene) scene.renderFrame(Number(t) || 0);
@@ -297,6 +338,10 @@ function wire() {
   refs.reset.addEventListener("click", () => {
     if (scene) scene.fitBounds();
   });
+  refs.slice3d.addEventListener("change", () => {
+    state = setShowSlice3d(state, refs.slice3d.checked);
+    if (scene) scene.setSlice3dVisible(state.showSlice3d);
+  });
   refs["slice-axis"].addEventListener("change", async (event) => {
     if (event.target.name !== "slice-axis") return;
     state = setAxis(state, event.target.value);
@@ -304,6 +349,11 @@ function wire() {
   });
   refs["slice-index"].addEventListener("input", async () => {
     state = setSliceIndex(state, state.axis, Number(refs["slice-index"].value), manifest.shape);
+    const moved = moveSelectionToSlice(state.selection, state.axis, state.index[state.axis]);
+    if (moved) {
+      await applyVoxelSelection(moved.i, moved.j, moved.k);
+      return;
+    }
     await refreshSlice();
   });
   refs.wc.addEventListener("input", async () => {
@@ -342,11 +392,22 @@ function wire() {
   });
   refs["tour-exit"].addEventListener("click", () => {
     state = setTourStep(state, -1, tourStops.length);
+    state = setShowSlice3d(state, false);
+    if (scene) scene.setSlice3dVisible(false);
+    if (refs.slice3d) refs.slice3d.checked = false;
     renderTour(refs, tourStops, state.tourIndex, goTour);
+    renderFocus(refs, focusForStop(null));
   });
   refs["slice-canvas"].addEventListener("pointerdown", async (event) => {
     const pixel = eventToPixel(event, refs["slice-canvas"]);
-    const voxel = slicePixelToVoxel(state.axis, state.index[state.axis], pixel.col, pixel.row);
+    const voxel = displayPixelToVoxel(
+      state.axis,
+      state.index[state.axis],
+      pixel.col,
+      pixel.row,
+      refs["slice-canvas"].height,
+      currentFlip(),
+    );
     await applyVoxelSelection(voxel.i, voxel.j, voxel.k);
   });
   refs.view3d.addEventListener("pointerdown", (event) => {
@@ -407,15 +468,17 @@ async function loadCase() {
     return;
   }
   scene.setAnnotations(manifest.annotations);
+  scene.setSlice3dVisible(false);
   tourStops = expandTour(manifest);
   renderWarnings(refs, manifest.warnings || []);
+  renderFocus(refs, focusForStop(null));
   renderLayers(refs, manifest, state, { onToggle, onOpacity });
   renderTour(refs, tourStops, state.tourIndex, goTour);
   renderCandidates(refs, manifest.annotations, state.focusId, focusAnnotation);
   refreshChrome();
   if (resizeObserver) resizeObserver.disconnect();
   resizeObserver = new ResizeObserver(() => scene && scene.resize());
-  resizeObserver.observe(refs.view3d.parentElement);
+  resizeObserver.observe(refs.view3d);
   scene.resize();
   scene.fitBounds();
   await loadVisibleMeshes();

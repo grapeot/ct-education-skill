@@ -25,11 +25,11 @@ export function tourFallbackTitle(id) {
 
 export function defaultLayerOpacity(id) {
   const key = String(id || "").toLowerCase();
-  if (key.includes("lung")) return 0.46;
-  if (key.includes("airway")) return 0.92;
-  if (key.includes("vessel")) return 0.5;
-  if (key.includes("bone")) return 0.2;
-  return 0.7;
+  if (key.includes("lung")) return 0.36;
+  if (key.includes("airway")) return 0.88;
+  if (key.includes("vessel")) return 0.42;
+  if (key.includes("bone")) return 0.16;
+  return 0.62;
 }
 
 export function defaultLayerVisible(id) {
@@ -108,7 +108,7 @@ export function expandTour(manifest) {
         id: "fallback-vascular",
         title: copy.tour.fallbackTitles.vascular,
         layer_ids: [vessel.id],
-        target_ras: firstAnn ? firstAnn.position_ras : center,
+        target_ras: center,
       },
     );
   }
@@ -117,7 +117,7 @@ export function expandTour(manifest) {
       takeApi(/candidate|case/) || {
         id: "fallback-case-candidate",
         title: copy.tour.fallbackTitles.caseCandidate,
-        layer_ids: allLayerIds,
+        layer_ids: lung ? [lung.id] : overviewLayers,
         target_ras: firstAnn.position_ras,
         annotation_id: firstAnn.id,
       },
@@ -138,6 +138,57 @@ export function expandTour(manifest) {
   return ordered;
 }
 
+export function slice3dDefaultForStop(stop) {
+  if (!stop) return false;
+  const id = String(stop.id || "").toLowerCase();
+  if (/overview|volume/.test(id)) return false;
+  if (/source-evidence|fallback-source/.test(id)) return true;
+  return Boolean(stop.annotation_id);
+}
+
+export function visibleIdsForTourStop(stop) {
+  if (!stop || !Array.isArray(stop.layer_ids)) return null;
+  const id = String(stop.id || "").toLowerCase();
+  const closeUp = Boolean(stop.annotation_id) || /source-evidence|fallback-source/.test(id);
+  if (!closeUp) return stop.layer_ids.slice();
+  return stop.layer_ids.filter((layerId) => !/bone/i.test(String(layerId)));
+}
+
+export function focusForStop(stop) {
+  if (!stop) {
+    return { title: copy.focus.overviewTitle, body: copy.focus.overviewBody };
+  }
+  const id = String(stop.id || "").toLowerCase();
+  if (/overview|volume/.test(id)) {
+    return { title: copy.focus.overviewTitle, body: copy.focus.overviewBody };
+  }
+  if (/source-evidence|fallback-source/.test(id)) {
+    return { title: copy.focus.sourceTitle, body: copy.focus.sourceBody };
+  }
+  if (/airway/.test(id)) {
+    return { title: copy.focus.airwaysTitle, body: copy.focus.airwaysBody };
+  }
+  if (/lung/.test(id)) {
+    return { title: copy.focus.lungsTitle, body: copy.focus.lungsBody };
+  }
+  if (/vessel|vascular/.test(id) && !/tour-candidate|case-candidate|fallback-case/.test(id)) {
+    return { title: copy.focus.vesselsTitle, body: copy.focus.vesselsBody };
+  }
+  if (stop.annotation_id || /candidate|case/.test(id)) {
+    return { title: copy.focus.candidateTitle, body: copy.focus.candidateBody };
+  }
+  return { title: copy.focus.overviewTitle, body: copy.focus.overviewBody };
+}
+
+export function layerHintForId(id) {
+  const key = String(id || "").toLowerCase();
+  if (key.includes("lung")) return copy.layerHint.lungs;
+  if (key.includes("airway")) return copy.layerHint.airways;
+  if (key.includes("vessel") || key.includes("vascular")) return copy.layerHint.vessels;
+  if (key.includes("bone")) return copy.layerHint.bones;
+  return "";
+}
+
 export function createAppState(manifest) {
   const [nz, ny, nx] = manifest.shape;
   const zMid = (manifest.bounds_ras.min[2] + manifest.bounds_ras.max[2]) / 2;
@@ -153,6 +204,7 @@ export function createAppState(manifest) {
     selection: null,
     tourIndex: -1,
     focusId: null,
+    showSlice3d: false,
     clip: {
       enabled: false,
       axis: "z",
@@ -275,6 +327,61 @@ export function setClip(state, patch) {
     ...state,
     clip: { ...state.clip, ...patch },
   };
+}
+
+export function setShowSlice3d(state, visible) {
+  return { ...state, showSlice3d: Boolean(visible) };
+}
+
+export function moveSelectionToSlice(selection, axis, index) {
+  if (!selection || selection.i == null) return null;
+  const next = {
+    i: selection.i,
+    j: selection.j,
+    k: selection.k,
+    error: null,
+  };
+  if (axis === "axial") next.k = index;
+  else if (axis === "coronal") next.j = index;
+  else next.i = index;
+  return next;
+}
+
+export function isSelectionOnSlice(selection, axis, index) {
+  if (!selection || selection.error || selection.i == null) return false;
+  if (axis === "axial") return selection.k === index;
+  if (axis === "coronal") return selection.j === index;
+  return selection.i === index;
+}
+
+export function tourUsesLayerFit(stop) {
+  if (!stop) return false;
+  const id = String(stop.id || "").toLowerCase();
+  if (/tour-candidate|case-candidate|fallback-case|source-evidence|fallback-source/.test(id)) {
+    return false;
+  }
+  return true;
+}
+
+export function tourFitPad(stop) {
+  const id = String(stop && stop.id ? stop.id : "").toLowerCase();
+  if (/airway/.test(id)) return 1.55;
+  if (/vessel|vascular/.test(id)) return 1.45;
+  return 1.22;
+}
+
+export function boxCenter(min, max) {
+  return [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
+}
+
+export function cameraDistanceForBox(min, max, fovDeg, pad) {
+  const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
+  const fov = (fovDeg * Math.PI) / 180;
+  return Math.max((radius / Math.sin(fov / 2)) * pad, 40);
 }
 
 export function visibleLayerIds(state) {

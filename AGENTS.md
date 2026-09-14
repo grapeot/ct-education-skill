@@ -32,7 +32,7 @@ CT_EDU_VIDEO_FFMPEG_SMOKE=1 python -B -m unittest discover -s tests -v
 npm --prefix frontend test
 ```
 
-Full discovery includes pipeline, hygiene, and video tests. The opt-in command requires `ffmpeg`; its encoder smoke uses synthetic frames and a mocked browser/server, not browser E2E. The current verified suite is 61 Python tests with the smoke enabled and 27 frontend tests, with zero skips. Default Python discovery skips the one opt-in smoke test. All fixtures must be synthetic and generated in memory or external temporary storage, never committed. Logic tests and frontend builds do not establish visual quality or medical accuracy; [test status](docs/test.md) separately records bounded browser verification.
+Full discovery includes pipeline, hygiene, and video tests. The opt-in command requires `ffmpeg`; its encoder smoke uses synthetic frames and a mocked browser/server, not browser E2E. The current verified suite is 69 Python tests with the smoke enabled and 32 frontend tests, with zero skips. Default Python discovery skips the one opt-in smoke test. CI runs default Python discovery, `npm test`, and the generic frontend build. All fixtures must be synthetic and generated in memory or external temporary storage, never committed. Logic tests and frontend builds do not establish visual quality or medical accuracy; [test status](docs/test.md) separately records bounded browser verification.
 
 ## Working Conventions
 
@@ -41,6 +41,7 @@ Full discovery includes pipeline, hygiene, and video tests. The opt-in command r
 - Preserve concurrent changes. Do not undo another contributor's work.
 - Use the existing CLI for authorized local generation; develop checks with synthetic inputs, not private health records.
 - Keep native HU and reduced-grid label geometry distinct. Mesh appearance is not source-slice evidence.
+- Keep presentation transforms separate from source arrays: physical 2D aspect and superior-up rows require inverse click mapping; display-only mesh smoothing must not modify HU or labels.
 - Missing tools or authorized input are blockers, not permission to fabricate outputs or upload private data.
 
 ## Git and Protection

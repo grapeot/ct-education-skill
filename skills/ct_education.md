@@ -110,6 +110,8 @@ Open `http://127.0.0.1:8787`; stop with Ctrl+C. To view the annotation build, pa
 
 Explore layer toggles/opacity, native slice indices/windowing, source-linked picks, annotation focus, and tour stops. Minimal manifest tours are expanded with available-layer/source stops; sufficiently complete tours are not duplicated. RAS x/y/z clipping is uncapped, and clipped-away mesh hits are filtered from picking. Do not interpret cut holes as anatomy. Interactive camera transitions depend on the current view; video rendering separately controls frame time.
 
+The 3D native-slice plane is optional and defaults off for overview/anatomy; the 2D source panel remains available. Anatomy tour cameras fit actual requested layer bounds, while candidate focus remains separate. Mobile panels collapse to reduce obstruction.
+
 The read-only APIs are `/api/manifest`, `/api/mesh/<layer-id>`, `/api/slice?axis=axial&index=0&wc=-600&ww=1500`, and `/api/voxel?i=0&j=0&k=0`. Slice axis also accepts `coronal` and `sagittal`; `wc`/`ww` default to the shown values. Slice responses are PNG with `X-Slice-Index`; voxel responses contain `hu`, `lps`, and `ras`. Raw volumes, labels, and provenance are not served.
 
 ### Video Rendering
@@ -148,6 +150,8 @@ Native array order is `[k,j,i]`; the affine maps homogeneous `[i,j,k,1]` to mill
 
 Axial PNGs are display-windowed acquired frames from `volume[k,:,:]`, not original DICOM bytes. Coronal `volume[:,j,:]` and sagittal `volume[:,:,i]` are source-grid cross-sections, not independent acquisitions or anatomical world-axis reformats for oblique data. Backend planes are not flipped or resampled. Browser display scaling is not new source detail; numeric HU comes from the voxel API, not the 8-bit PNG.
 
+The 2D canvas uses physical aspect ratios and superior-up non-axial row presentation, with inverse click mapping. Display rows reverse when `affine_ras[2][2] > 0`; native PNG arrays and 3D texture UVs remain unchanged. This is not anatomical oblique resampling or full grid de-shearing.
+
 Completed external workspaces contain:
 
 | Artifact | Contract |
@@ -164,7 +168,7 @@ Even the sanitized manifest is private runtime data. Source HU is the intensity 
 
 ## Quality Iteration
 
-There are no threshold, model, or mask-import CLI flags. For authorized mask experiments, use the existing functions from `ct_education.segmentation` in an external script: `segment(volume, affine_lps)` returns masks, label affine, stride, and warnings; `mesh_for_mask(mask, affine_lps, native_shape=None, stride=None)` extracts the derivative surface. Pass the label affine for a reduced-grid mask, not the native affine. The returned mask names match the documented layer IDs.
+There are no threshold, model, or mask-import CLI flags. For authorized mask experiments, use the existing functions from `ct_education.segmentation` in an external script: `segment(volume, affine_lps)` returns masks, label affine, stride, and warnings; `mesh_for_mask(mask, affine_lps, native_shape=None, stride=None, smooth=True)` extracts the derivative surface. Pass the label affine for a reduced-grid mask, not the native affine. Set `smooth=False` for raw-mesh comparison; the default is one display-only pass with vertex movement capped at 0.75 mm or a smaller grid-dependent limit before JSON rounding. HU and labels are unchanged by that pass. The returned mask names match the documented layer IDs.
 
 Choose experiments and tests according to the observed failure. Preserve native HU, write experiments to fresh external run directories, and record local parameters, warnings, available layers, missing structures, and leakage. Compare masks against native slices by mapping through their affines; for categorical display, avoid interpolation that invents labels. Change masks and regenerate dependent labels/meshes/metadata consistently, rather than improving only mesh appearance. An experimental script is not automatically a CLI-compatible completed workspace.
 
@@ -175,7 +179,14 @@ python -B -m unittest discover -s tests -p test_pipeline.py -v
 npm --prefix frontend test
 ```
 
-Use `python -B -m unittest discover -s tests -v` for the full Python suite. With `ffmpeg` available, prefix it with `CT_EDU_VIDEO_FFMPEG_SMOKE=1` to include real encoding of synthetic frames; the smoke still uses a mocked browser/server. The current snapshot has 61 Python and 27 frontend tests passing with zero skips when smoke is enabled. Default Python discovery skips that one smoke test. Maintainer-reported browser/video checks are separately recorded in [test status](../docs/test.md); neither those checks nor unit tests certify segmentation quality for a new input.
+Use `python -B -m unittest discover -s tests -v` for the full Python suite. With `ffmpeg` available, prefix it with `CT_EDU_VIDEO_FFMPEG_SMOKE=1` to include real encoding of synthetic frames; the smoke still uses a mocked browser/server. The current snapshot has 69 Python and 32 frontend tests passing with zero skips when smoke is enabled. Default Python discovery skips that one smoke test. Maintainer-reported browser/video checks are separately recorded in [test status](../docs/test.md); neither those checks nor unit tests certify segmentation quality for a new input.
+
+## Learned Pitfalls
+
+- Anisotropic rasters need physical canvas aspect from affine axis lengths, not square display pixels. Keep native PNGs intact and invert presentation transforms when mapping clicks.
+- An off-slice selection is not a current-slice crosshair. Moving the slice must update the selected index, discard stale HU/coordinates, and reject superseded responses before showing new values.
+- Shader clipping does not automatically filter raycasts. Exclude discarded mesh hits and hidden 3D slice planes from picking; disabling the optional plane must not disable the 2D source panel.
+- Split ZIP packages can contain one series, not separate acquisitions. Use collection ingestion and retain duplicate SOP/position rejection rather than concatenating or deduplicating frames manually.
 
 ## Acceptance and Handoff
 

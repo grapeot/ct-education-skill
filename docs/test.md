@@ -19,16 +19,17 @@ Tests use synthetic inputs generated in memory or external temporary storage, ne
 
 ## Verification Status
 
-- Verified on 2026-09-14: **61 Python tests passed with the opt-in ffmpeg smoke enabled; 27 frontend unit tests passed**, both with zero skips. The documentation reviewer independently reran these suites.
-- Python coverage comprises 24 pipeline tests, 9 repository hygiene tests, and 28 video tests. Scanner integration is complete. Without the smoke environment flag, the current suite has 60 passing tests and one skipped smoke test.
-- The coordinating maintainer separately verified authorized private generation, desktop and mobile browser QA with no console errors, selection/clipping/candidate focus, and video generation. These are bounded functional checks, not segmentation-quality or clinical certification.
-- Required `master` check: `scaffold-hygiene`. CI runs default Python discovery, frontend tests, and the generic frontend build, but not the opt-in encoder smoke or Playwright browser installation. It does not deploy or upload artifacts. No remote CI pass is claimed here.
+- Verified on 2026-09-14 for iteration 2: **69 Python tests passed with the opt-in ffmpeg smoke enabled; 32 frontend unit tests passed**, both with zero skips. The documentation reviewer independently reran these suites.
+- Python coverage comprises 32 pipeline tests, 9 repository hygiene tests, and 28 video tests. Without the smoke environment flag, the current suite has 68 passing tests and one skipped smoke test.
+- The coordinating maintainer separately verified the production build, final desktop/mobile browser QA without console errors, and video export with successful ffprobe validation and full ffmpeg decoding. These generic functional outcomes do not certify segmentation or clinical quality.
+- Required `master` check: `scaffold-hygiene`. Current CI runs default Python discovery, `npm test`, and the generic frontend build, but not the opt-in encoder smoke or Playwright browser installation. It does not deploy or upload artifacts. The current default Python suite skips one smoke test; the local opt-in run executes all 69.
+- Maintainer-confirmed release status: [PR1](https://github.com/grapeot/ct-education-skill/pull/1) merged via normal squash after required GitHub CI passed. GLM privacy reviews for the scaffold and PR1 passed. PR2's privacy gate, submission, and remote CI result remain pending; PR1's pass is not a PR2 result.
 - CLI help for all four subcommands and the Playwright browser-install command was checked against source. The earlier generic external annotation example was accepted on synthetic geometry with generic output IDs.
 - The coordinating maintainer's final manual privacy gate remains required before PR submission; local test passes do not replace it. The documentation reviewer performs no Git mutations.
 
 ## Backend Coverage
 
-`tests/test_pipeline.py` covers 24 synthetic cases:
+`tests/test_pipeline.py` covers 32 synthetic cases:
 
 - Physical slice sorting, oblique/tilted affine displacement, inverse coordinate roundtrips, and native HU preservation.
 - Signed/unsigned pixels and per-slice rescale slope/intercept, plus rejection of invalid stack metadata, duplicate positions, and inconsistent grids.
@@ -36,6 +37,7 @@ Tests use synthetic inputs generated in memory or external temporary storage, ne
 - Real-path overlap and symlink-ancestor checks, no-follow local file access, no overwrite, and build failure behavior before and during publication.
 - JPEG Lossless decoder plugin availability. This is a registration check, not a compressed-image roundtrip or universal transfer-syntax validation.
 - Candidate masks on synthetic primitives, exclusion of synthetic table-like material, reduced-grid affine/stride, empty candidates, and surface bounds including oblique transforms.
+- Eight iteration-2 tests cover branching airway recovery without native changes, large-pocket leakage rejection, diagonal connectivity through final filtering, bounded overgrowth, affine-directed superior seeding, rejection of fragmented bulk-lung seeds, anisotropic physical morphology, and bounded deterministic smoothing with labels unchanged.
 - Annotation position/radius validation and replacement of supplied private-text markers with generic candidate text.
 - Native slice extraction without backend flips, known voxel HU/coordinates, allowed mesh routes, and rejection of traversal or private-file routes.
 - Loopback Host/Origin guards, no-store headers, and rejection of symlink-replaced assets.
@@ -57,13 +59,14 @@ The encoder smoke is not full browser E2E. The separate maintainer-reported brow
 
 ## Frontend Coverage
 
-`frontend/tests/` contains 27 unit tests for client logic:
+`frontend/tests/` contains 32 unit tests for client logic:
 
 - Affine mapping and inversion, LPS/RAS conversion, finite manifest values, and mesh validation.
 - Native PNG pixel mapping, slice extents/corners, physical orientation labels, and source-axis fallback for oblique geometry.
 - Initial slice indices, selected voxel propagation, rejection of out-of-bounds selection, tour step bounds, visible layer selection, clipping state, and educational fallback titles.
 - Four clipped-hit filtering tests: discarded mesh hits are skipped, unclipped slice/locator hits remain eligible, disabling clipping preserves the nearest hit, and all-discarded hits yield no selection.
 - Two tour-expansion tests: minimal manifest tours gain local layer/source stops without duplicating a sufficiently complete tour.
+- Five iteration-2 tests cover physical canvas aspect, superior-up display/click inversion, matching orientation labels, slice-selection updates that discard stale HU, and vascular fallback targets independent of annotation centers. These unit tests do not assert browser camera fitting or asynchronous HTTP refetch behavior.
 
 These tests do not instantiate a browser renderer. They are not end-to-end evidence for camera movement, opacity rendering, WebGL picking, or desktop/mobile usability.
 
@@ -75,7 +78,7 @@ Automated scanning cannot recognize every identifying case fact. Keep all runtim
 
 ## Visual QA and Regressions
 
-The coordinating maintainer verified desktop and mobile browser use with no console errors, including selection, clipping, and candidate focus, plus successful video generation. Successful rendering is not evidence of high-fidelity clinical masks or complete anatomy.
+The coordinating maintainer completed final desktop/mobile browser QA without console errors and verified the final MP4 with ffprobe and full ffmpeg decoding. Earlier interaction checks included selection, clipping, and candidate focus. Successful rendering and decoding are not evidence of high-fidelity clinical masks or complete anatomy.
 
 Future changes still need regression checks appropriate to their scope: desktop/mobile loading, layer visibility and opacity, uncapped cuts, source-linked picks/crosshairs, tour navigation, and candidate focus. Inspect native/reduced-grid alignment, orientation, leakage, and missing structures separately from UI functionality. For video, verify playable MP4 output, expected frame count, source linkage, and legible educational warnings. Check network/cache behavior locally.
 
