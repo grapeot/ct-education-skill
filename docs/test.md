@@ -1,35 +1,82 @@
-# Test Plan
+# Tests and Verification
 
-## Current Checks
+## Test Commands
 
-Only scaffold hygiene tests exist. No parser, geometry, segmentation, runtime privacy, integration, or viewer end-to-end tests are implemented. A passing scaffold suite is not clinical validation or proof that arbitrary identifying text is absent.
-
-Create `.venv` with `uv venv --python 3.12` if absent, then run:
+Use the [installation instructions](../README.md#installation), including `uv venv` if needed and `uv pip install -e .`. From the repository root with the environment activated:
 
 ```bash
 source .venv/bin/activate
+python -B -m unittest discover -s tests -p test_pipeline.py -v
 python -B -m unittest discover -s tests -v
+CT_EDU_VIDEO_FFMPEG_SMOKE=1 python -B -m unittest discover -s tests -v
+npm --prefix frontend test
+npm --prefix frontend run build
 ```
 
-The suite uses Python standard-library `unittest` without third-party dependencies or network calls. It checks the required scaffold and single root skill, fake configuration, license, CI policy text, ignore-rule declarations, ASCII text inventory, and generic private-text markers. Synthetic hygiene probes exercise rejected filenames, directory names, binary content, symlinks, and private-text patterns in external temporary storage. No DICOM is generated or read by these checks.
+The first test command runs the pipeline suite; full discovery includes hygiene and video tests. The opt-in smoke command requires `ffmpeg` with `libx264` on `PATH`. The video unit tests use mocked browser/server orchestration; the smoke test uses real ffmpeg with synthetic frames, not a real browser. Playwright and Chromium are needed for actual video rendering, not these mocked tests; see [video setup](../README.md#optional-video-dependencies).
 
-Ignore checks verify declarations, not Git's full ignore engine. The repository scan skips local environment, cache, and Git metadata directories; before every PR, manually review all proposed tracked files, including force-added files and those outside the scan. Pattern checks cannot detect every identifier or identifying case fact.
+Tests use synthetic inputs generated in memory or external temporary storage, never real patient fixtures. Dependency installation may use the network; the synthetic tests use local computation and loopback HTTP. Default Python discovery skips the one opt-in smoke test; enable it with ffmpeg available to run the complete suite.
 
-CI runs a single `scaffold-hygiene` job on pushes and PRs to `master`, with no deployments or artifact uploads. CI has not run remotely during scaffolding. The branch protection policy is separately configured and verified by the coordinating maintainer.
+## Verification Status
 
-## Future Unit and Integration Coverage
+- Verified on 2026-09-14: **61 Python tests passed with the opt-in ffmpeg smoke enabled; 27 frontend unit tests passed**, both with zero skips. The documentation reviewer independently reran these suites.
+- Python coverage comprises 24 pipeline tests, 9 repository hygiene tests, and 28 video tests. Scanner integration is complete. Without the smoke environment flag, the current suite has 60 passing tests and one skipped smoke test.
+- The coordinating maintainer separately verified authorized private generation, desktop and mobile browser QA with no console errors, selection/clipping/candidate focus, and video generation. These are bounded functional checks, not segmentation-quality or clinical certification.
+- Required `master` check: `scaffold-hygiene`. CI runs default Python discovery, frontend tests, and the generic frontend build, but not the opt-in encoder smoke or Playwright browser installation. It does not deploy or upload artifacts. No remote CI pass is claimed here.
+- CLI help for all four subcommands and the Playwright browser-install command was checked against source. The earlier generic external annotation example was accepted on synthetic geometry with generic output IDs.
+- The coordinating maintainer's final manual privacy gate remains required before PR submission; local test passes do not replace it. The documentation reviewer performs no Git mutations.
 
-- Generate synthetic volumes at test time in memory or external temporary directories; no stored medical fixtures. Use known HU values and geometric primitives.
-- Verify signed-pixel HU conversion, rescale values, scrambled slice sorting, anisotropic and oblique grids, and actual IPP displacement rather than `SliceThickness`.
-- Exercise independent series, duplicate/gapped/nonuniform stacks, changing orientation, and unsupported multiframe rejection.
-- Roundtrip voxel centers through LPS and viewer transforms within a declared numerical tolerance; select the original frame for known clicks and reject out-of-bounds positions.
-- Reject equal/nested roots in both directions, symlink aliases, missing-leaf escapes, traversal, and output path replacement. Check that rejected writes leave input and repository unchanged.
-- Test CPU thresholds, chest masks, connected components, seeded region-growing leakage, and empty/ambiguous results. Missing warning flags must not be interpreted as confirmed anatomy.
-- Reject reviewed-label imports with mismatched shape, geometry, series, or missing provenance; retain review status without treating it as truth.
-- Capture logs and network requests on synthetic runs; verify no identifying fields, source paths, non-loopback traffic, or arbitrary file-serving routes.
+## Backend Coverage
 
-## Future End-to-End and Manual QA
+`tests/test_pipeline.py` covers 24 synthetic cases:
 
-End-to-end tests await a viewer implementation. They must verify layer toggles, dynamic cuts, original-slice linkage, source-coordinate picking, uncertainty text, and tour stops on synthetic data. Test desktop and mobile layouts, loopback host/origin checks, and absence of study data from app builds and persistent caches.
+- Physical slice sorting, oblique/tilted affine displacement, inverse coordinate roundtrips, and native HU preservation.
+- Signed/unsigned pixels and per-slice rescale slope/intercept, plus rejection of invalid stack metadata, duplicate positions, and inconsistent grids.
+- Supported-series selection, explicit selection ambiguity, loose DICOM plus ZIP scanning, and same-series frame combination across packages without extraction. Tests reject repeated SOP instances rather than deduplicating, check each archive's path/size/symlink rules, and exercise resource cleanup after a later archive fails.
+- Real-path overlap and symlink-ancestor checks, no-follow local file access, no overwrite, and build failure behavior before and during publication.
+- JPEG Lossless decoder plugin availability. This is a registration check, not a compressed-image roundtrip or universal transfer-syntax validation.
+- Candidate masks on synthetic primitives, exclusion of synthetic table-like material, reduced-grid affine/stride, empty candidates, and surface bounds including oblique transforms.
+- Annotation position/radius validation and replacement of supplied private-text markers with generic candidate text.
+- Native slice extraction without backend flips, known voxel HU/coordinates, allowed mesh routes, and rejection of traversal or private-file routes.
+- Loopback Host/Origin guards, no-store headers, and rejection of symlink-replaced assets.
 
-Real-study evaluation requires separate authorization and local private storage. Manually inspect slice/label overlays, geometry alignment, leakage, missing branches, and tour claims. Keep all study images, screenshots, meshes, tours, and video outside the repository and public PR/CI attachments. Record only generic pass/fail summaries publicly. Optional video QA comes after MVP and QA, and must verify source-coordinate continuity and candidate labels.
+Coverage is bounded by the tested cases. It does not prove every schema edge case, arbitrary race resistance, all transfer syntaxes, or anatomical quality. Known dependency deprecation warnings during mesh tests are not failures; the reported full-suite rerun used `PYTHONWARNINGS=ignore`.
+
+## Video Coverage
+
+`tests/test_video.py` contains 28 tests for options, publication, and capture orchestration:
+
+- Duration, fps, dimensions, and port bounds; output must be a new MP4 under the workspace, with traversal, symlink, and overwrite rejection.
+- Missing ffmpeg/Playwright and browser-start failures, fixed CLI error codes, and sanitized output.
+- Exact-origin browser route guards, external temporary profile/environment handling, and cleanup of server, browser, encoder, and staging on tested failure paths.
+- Asset-readiness failures, explicit frame timing, tour selection, and source-slice sweep only when annotations are absent.
+- Exclusive output publication, including a destination appearing during capture, and owner-only output mode.
+- Opt-in real ffmpeg encoding of synthetic frames with mocked browser/server; checks MP4 structure and faststart placement of `moov` before `mdat`.
+
+The encoder smoke is not full browser E2E. The separate maintainer-reported browser/video run supplies bounded integration evidence; it does not imply every browser or runtime failure path has been tested.
+
+## Frontend Coverage
+
+`frontend/tests/` contains 27 unit tests for client logic:
+
+- Affine mapping and inversion, LPS/RAS conversion, finite manifest values, and mesh validation.
+- Native PNG pixel mapping, slice extents/corners, physical orientation labels, and source-axis fallback for oblique geometry.
+- Initial slice indices, selected voxel propagation, rejection of out-of-bounds selection, tour step bounds, visible layer selection, clipping state, and educational fallback titles.
+- Four clipped-hit filtering tests: discarded mesh hits are skipped, unclipped slice/locator hits remain eligible, disabling clipping preserves the nearest hit, and all-discarded hits yield no selection.
+- Two tour-expansion tests: minimal manifest tours gain local layer/source stops without duplicating a sufficiently complete tour.
+
+These tests do not instantiate a browser renderer. They are not end-to-end evidence for camera movement, opacity rendering, WebGL picking, or desktop/mobile usability.
+
+## Hygiene Review
+
+Scaffold checks cover layout, the single root skill, fake configuration, license, CI declarations, ignore declarations, text inventory, and generic private markers. External synthetic probes exercise rejected names, binary content, symlinks, and private-text patterns. Ignore-declaration checks do not exercise Git's complete ignore engine. Environment, cache, and build directories can be excluded from scanning; inspect every proposed tracked or force-added file before each PR.
+
+Automated scanning cannot recognize every identifying case fact. Keep all runtime inputs and derivatives outside the repository and public history. Public outcomes must remain generic even when local testing has separate authorization to use private inputs. Default to no uploads; any GPT review requires explicit per-case approval of material, purpose, and destination under [the privacy gate](../AGENTS.md#privacy-gate). General testing or release permission does not authorize transmission or public disclosure.
+
+## Visual QA and Regressions
+
+The coordinating maintainer verified desktop and mobile browser use with no console errors, including selection, clipping, and candidate focus, plus successful video generation. Successful rendering is not evidence of high-fidelity clinical masks or complete anatomy.
+
+Future changes still need regression checks appropriate to their scope: desktop/mobile loading, layer visibility and opacity, uncapped cuts, source-linked picks/crosshairs, tour navigation, and candidate focus. Inspect native/reduced-grid alignment, orientation, leakage, and missing structures separately from UI functionality. For video, verify playable MP4 output, expected frame count, source linkage, and legible educational warnings. Check network/cache behavior locally.
+
+Use synthetic scenes first and record exactly which interactions were exercised. Real-study evaluation requires separate authorization and external private storage. Keep images, screenshots, meshes, annotations, tours, and videos outside public PRs, CI, logs, and issue attachments. Record only generic outcomes publicly; a lack of observed defects is not proof of complete anatomy.
