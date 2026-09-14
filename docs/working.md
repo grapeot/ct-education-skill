@@ -2,13 +2,27 @@
 
 ## Current Status
 
-The v0.1.0 backend Python package, `inspect`/`build`/`serve`/`render-video` CLI, and Three.js frontend are implemented and usable for local educational exploration. Video export uses Playwright Chromium and ffmpeg. Segmentation remains a limited CPU heuristic baseline, not validated models or high-fidelity clinical masks. Reviewed labelmap import, arbitrary oblique clipping, and anatomical oblique resampling remain unsupported.
+The v0.1.0 backend Python package, `inspect`/`build`/`serve`/`render-video` CLI, and Three.js frontend are implemented and usable for local educational exploration. Video export uses Playwright Chromium and ffmpeg; optional `serve --video-file` now enables single-file streaming and click-only playback/download. Segmentation remains a limited CPU heuristic baseline, not validated models or high-fidelity clinical masks. Reviewed labelmap import, arbitrary oblique clipping, and anatomical oblique resampling remain unsupported.
 
-Iteration-2 verification on 2026-09-14: **69 Python tests passed with the opt-in ffmpeg smoke enabled and 32 frontend unit tests passed**, with zero skips, independently rerun by the documentation reviewer. The coordinating maintainer verified the production build, final private desktop/mobile browser QA without console errors, and video generation with successful ffprobe validation and full ffmpeg decoding. These generic outcomes do not certify anatomy or segmentation quality.
+Optional-media verification on 2026-09-14: **all 89 Python tests passed with the opt-in ffmpeg smoke enabled and all 42 frontend tests passed**, with zero skips, independently rerun by the documentation reviewer. The earlier ASCII hygiene finding is resolved. Maintainer-reported Chrome checks through authenticated private routing passed across desktop, portrait, and landscape viewports, including playback, seeking, download, close cleanup, focused-control Escape, and landscape footer fit. These are not iPhone Safari certification; see [test status](test.md).
 
-The maintainer confirms [PR1](https://github.com/grapeot/ct-education-skill/pull/1) merged via normal squash after required GitHub CI passed. GLM privacy reviews for the scaffold and PR1 passed. PR2 remains pending: the coordinating maintainer will complete its second-iteration privacy gate before submission. No PR2 CI pass or merge is claimed.
+The maintainer confirms [PR1](https://github.com/grapeot/ct-education-skill/pull/1) and [PR2](https://github.com/grapeot/ct-education-skill/pull/2) are merged. PR3 is not created; the current privacy gate, GLM review, submission, and remote CI outcomes remain pending. Previously recorded scaffold/PR1 privacy passes do not cover this iteration.
 
 ## Changelog
+
+### 2026-09-14 (final media validation and documentation)
+
+- Recorded the maintainer's ASCII separator fix and capture-phase Escape handling for focused native video controls, preserving browser Escape behavior during native fullscreen. Independently reran all 89 Python tests with encoder smoke and 42 frontend tests; all passed with zero skips.
+- Recorded maintainer-reported Chrome checks through authenticated private routing across desktop, portrait, and landscape viewports. Playback, 206 seeking, attachment download, no source before click, close cleanup/focus return, focused-control Escape, and landscape footer fit passed. No iPhone Safari certification is claimed.
+- Corrected the PRD's stale MP4-serving prohibition and current test counts; synchronized all seven docs using a Cursor rough draft and source review. Runtime data remains external/private. Current privacy and GLM reviews remain pending; no Git commands or source edits by the documentation worker.
+
+### 2026-09-14 (optional media and documentation)
+
+- Added optional CLI selection of one workspace-relative MP4, generic video metadata, GET/HEAD streaming with single byte ranges, and attachment download. Video remains disabled by default; raw data, provenance, and unselected MP4s remain unserved.
+- Added "Watch the tour" with click-only source attachment, modal playback/download, and pause/source removal on close. The UI uses neutral English copy and a high-tech visual style; browser acceptance was pending at this milestone. The capture server retains `video_file=None`, avoiding cyclic playback.
+- Refreshed README, RFC, test status, working log, root skill, and contributor guidance from a Cursor rough draft with source/help review and surgical edits. Preserved external/private output boundaries and documented only generic authenticated-routing requirements.
+- At this historical milestone, 88 of 89 Python tests passed with encoder smoke; the frontend ASCII hygiene failure was subsequently resolved. All then-current 39 frontend tests passed. No source edits or Git commands by the documentation worker; no runtime artifacts or case details recorded publicly.
+- PR1 and PR2 were merged per maintainer confirmation. PR3 was not created; browser/private-route checks and the privacy gate were pending at this milestone. Current status is recorded above.
 
 ### 2026-09-14 (iteration 2 pipeline refinement and documentation)
 
@@ -16,7 +30,7 @@ The maintainer confirms [PR1](https://github.com/grapeot/ct-education-skill/pull
 - Added bounded display-only mesh smoothing, leaving native HU and labels unchanged by that pass. Preserved the native slice grid.
 - Updated the seven public docs for physical-aspect/superior-up 2D presentation, inverse click mapping, off-slice/stale-HU handling, layer-fitted tours, and optional 3D source-plane visibility. Used a short Cursor draft followed by source review.
 - Verified 69 Python tests with encoder smoke and 32 frontend tests. The maintainer reports successful build, final private browser QA, and video probe/full-decode checks. No case facts or runtime artifact metadata are recorded.
-- PR1 merged with required CI and prior privacy review passed; PR2 privacy review and submission remain pending. No Git mutations by the documentation worker.
+- At this historical milestone, PR1 had merged with required CI and prior privacy review passed; PR2 privacy review and submission were pending. Current release status is recorded above. No Git mutations by the documentation worker.
 
 ### 2026-09-14 (frontend slice/tour acceptance fixes)
 
@@ -59,12 +73,16 @@ The coordinating maintainer confirms active protection on `master`: PRs required
 - [x] Three.js viewer, candidate controls, clipping, and local tour.
 - [x] Video export with private staging and no-overwrite MP4 publication.
 - [x] CLI/user documentation and RFC updated for implemented v0.1.
-- [x] Full 69-test Python suite with encoder smoke and 32 frontend tests.
+- [x] Optional single-file video HTTP routes and click-only playback/download UI.
+- [x] Independent current test run: all 89 Python tests with encoder smoke and all 42 frontend tests passed.
+- [x] Frontend ASCII hygiene failure resolved and full Python suite rerun.
 - [x] Maintainer-confirmed remote `master` protection.
-- [x] Scanner integration and local full-suite verification.
-- [x] Maintainer-reported build, final desktop/mobile browser QA, and video probe/full-decode verification.
+- [x] Historical scanner integration and local full-suite verification.
+- [x] Historical iteration-2 build, desktop/mobile browser QA, and video probe/full-decode verification.
 - [x] PR1 merged via normal squash after required CI passed; scaffold/PR1 GLM privacy reviews passed.
-- [ ] PR2 privacy gate, submission, and subsequent remote CI outcome.
+- [x] PR2 merged per maintainer confirmation.
+- [x] Maintainer-reported Chrome playback through authenticated private routing across desktop, portrait, and landscape viewports, including 206 seeking and close cleanup.
+- [ ] Current privacy gate, GLM review, PR3 submission, and subsequent remote CI outcome; PR3 not created.
 - [ ] Heuristic mask-quality review and refinement, with authorized evidence external.
 - [ ] Deferred: reviewed labelmap import and oblique viewing extensions.
 

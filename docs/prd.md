@@ -13,10 +13,11 @@ Provide a local educational tool and coding agent skill that reads chest CT, ext
 - Source and surfaces: `volume.npy` preserves native-grid float32 HU; disposable `meshes/<layer-id>.json` contains flat RAS positions and triangle indices. A bounded display-only smoothing pass leaves HU and labels unchanged. Reduced-grid surfaces are not source-image evidence or diagnostic size measurements.
 - External annotations: `--annotations` accepts an external JSON array of positions and radii. IDs and free text are replaced with generic text. These are unverified spheres, not segmented lesions or automatically detected findings.
 - Video export: `render-video` captures the local viewer's full viewport, including controls and educational warnings, using headless Playwright Chromium and ffmpeg H.264 MP4 encoding. A timed orbit/tour and annotation-free source-slice sweep are implemented. Output is a new private MP4 inside the external workspace, with no overwrite. See [architecture](rfc.md#video-rendering) for transaction and option details.
+- Optional playback: `serve --video-file tour.mp4` selects one existing regular MP4 by a workspace-relative path. Video is disabled by default; absolute paths, traversal, symlinks, and non-MP4 names are rejected. It does not enable directory or bulk output serving. The renderer's internal server retains `video_file=None` to prevent cyclic playback.
 
 ## Runtime API
 
-The server binds only to `127.0.0.1` and serves generic frontend assets plus these GET routes:
+The server binds only to `127.0.0.1` and serves generic frontend assets plus these GET routes, with HEAD support:
 
 | Route | Result |
 | --- | --- |
@@ -24,8 +25,10 @@ The server binds only to `127.0.0.1` and serves generic frontend assets plus the
 | `/api/mesh/<layer-id>` | Flat RAS coordinates and triangle indices for a listed layer. |
 | `/api/slice?axis=axial&index=0&wc=-600&ww=1500` | Windowed 8-bit PNG with `X-Slice-Index`; axis also accepts `coronal` or `sagittal`. `wc` and `ww` are optional with these defaults. |
 | `/api/voxel?i=0&j=0&k=0` | Numeric `hu`, `lps`, and `ras` for an in-bounds native voxel. |
+| `/api/video-info` | `{"available":false}` by default; fixed playback/download URLs when a video is configured. |
+| `/api/video` | Configured MP4 only, with single byte-range 206/416 responses; `?download=1` requests an attachment. Disabled route returns 404. |
 
-Indices in the examples illustrate syntax only. Raw volumes, labels, source DICOM, private provenance, and rendered MP4s have no serving route. The video browser separately allows only its exact loopback origin's GET/HEAD requests and blocks WebSockets and service workers; this is not an OS-wide network isolation claim.
+Indices in the examples illustrate syntax only. Raw volumes, labels, source DICOM, private provenance, and unselected MP4s have no serving route. HTTP requests cannot select another video path. The capture browser separately allows only its exact loopback origin's GET/HEAD requests and blocks WebSockets and service workers; this is not an OS-wide network isolation claim.
 
 ## Viewer Interactions
 
@@ -37,8 +40,9 @@ Indices in the examples illustrate syntax only. Raw volumes, labels, source DICO
 - RAS x/y/z clipping with uncapped-cut warnings. Cut openings are rendering boundaries, not anatomy.
 - A local tour with source-coordinate targets and candidate focus. The frontend expands a minimal manifest tour with available-layer and source-slice stops without duplicating a sufficiently complete tour. Interactive transitions depend on the current view; the video renderer separately supplies explicit frame times.
 - The optional 3D native-slice plane defaults off for overview/anatomy. Anatomy tour cameras fit actual requested layer bounds, distinct from candidate focus. Mobile panels collapse while the 2D source panel remains available.
+- "Watch the tour" attaches the video source only after click. Closing pauses playback, removes the source, reloads the media element, clears the download link, and restores focus. Escape closes the non-fullscreen modal from focused native controls; native fullscreen Escape remains browser-controlled. Download and native fullscreen controls remain available.
 
-Responsive controls are implemented. The coordinating maintainer verified desktop and mobile browser use with no console errors, including selection, clipping, and candidate focus, as well as successful video generation. These bounded checks do not establish high-fidelity masks or comprehensive cross-browser coverage.
+Responsive controls are implemented. In addition to prior viewer/video-generation checks, the coordinating maintainer reports successful Chrome playback checks through authenticated private routing across desktop, portrait, and landscape viewports. These bounded checks do not establish high-fidelity masks, iPhone Safari certification, or comprehensive cross-browser coverage; see [test status](test.md#visual-qa-and-regressions).
 
 ## Limits and Non-Goals
 
@@ -52,11 +56,11 @@ Repository, input, and workspace must be pairwise disjoint after real-path resol
 
 All runtime assets and case facts remain private and external, including sanitized derivatives. No raw patient data, derivatives, identifiers, private paths, or case facts belong in public repositories/history, assets, docs, PRs, issues, CI, or logs. Default to no uploads. GPT review requires explicit per-case user approval of material, purpose, and destination; build/test/release authorization is not upload consent. Agents cannot infer or self-grant it, and must stop before transmission if its scope is unspecified. This exception approves neither other providers nor public disclosure; the application has no upload route. See [privacy rules](../AGENTS.md#privacy-gate).
 
-Synthetic fixtures are generated outside the repository. `provenance.json` stores private source mappings and is never served. Host/Origin guards and no-store headers reduce exposure but are not authentication or full anonymization. No public hosting, tunnels, runtime CDN, telemetry, or cloud tour service is part of v0.1.
+Synthetic fixtures are generated outside the repository. `provenance.json` stores private source mappings and is never served. Host/Origin guards and no-store headers reduce exposure but are not authentication or full anonymization. User-authorized private access through caller-managed authenticated proxies may include the selected MP4; proxies must forward `Range` and preserve `Cache-Control: no-store`. No public hosting, public tunnels, static workspace serving, runtime CDN, telemetry, or cloud tour service is part of v0.1.
 
 ## Acceptance and Backlog
 
-- Implemented baseline: `inspect`, `build`, `serve`, `render-video`, geometry-preserving HU, reduced-grid candidates, local viewer, and private publication. All 69 Python tests with encoder smoke and 32 frontend unit tests passed; details are in [test status](test.md).
+- Implemented baseline: `inspect`, `build`, `serve`, `render-video`, geometry-preserving HU, reduced-grid candidates, local viewer, private publication, and opt-in single-file playback/download. All 89 Python tests with encoder smoke and 42 frontend unit tests passed in the independent rerun with zero skips; details are in [test status](test.md).
 - Verified use: The coordinating maintainer reports successful authorized private generation, bounded desktop/mobile browser QA, and video generation. Mask quality remains a limitation, not a certified outcome. Each future input still needs task-specific review.
 - Deferred: Reviewed labelmap import with grid/provenance validation and oblique viewing extensions. Any future learned model needs explicit supply, licensing, and evaluation; it is not a promised v0.1 capability.
 

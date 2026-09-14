@@ -70,20 +70,28 @@ Private source lookup and caller mappings belong in external private storage, no
 - `labels-grid.json`: Label `shape`, `affine_lps`, `stride_kji`, `encoding: bitfield`, and `bits` mapping.
 - `meshes/<layer-id>.json`: Flat RAS-mm `positions` and triangle `indices`. Extraction is bounded to 180,000 triangles per layer; empty or unsupported surfaces can be omitted with warnings.
 - `provenance.json`: Private source-frame mappings and algorithm record (`cpu-threshold-v1`), never served.
-- `tour.mp4` or chosen MP4 filename: Optional private video output under the workspace, not a served manifest asset.
+- `tour.mp4` or chosen MP4 filename: Optional private video output under the workspace, not a manifest asset. Only explicit `serve --video-file` selection enables playback/download.
 
 `build --annotations` accepts an external JSON array of at most 100 objects. Required fields are a unique ASCII `id` (at most 64 letters/digits/hyphens/underscores with at least one alphanumeric), finite three-number `position_ras`, and finite `radius_mm` in `(0,100]`. Centers must be inside native voxel-cell bounds. Optional `label`, `description`, and `review_status` are accepted; other keys are rejected. IDs and free text are replaced with generic candidate text in the served manifest. Spheres remain unverified candidates, never segmented lesions. The [root skill](../skills/ct_education.md#external-annotations) provides a fictional schema example.
 
 ## Local Viewer
 
-`serve` binds only to `127.0.0.1`, default port 8787, and validates loopback Host/Origin headers against the actual port. Static routes are `/`, `/index.html`, and allowlisted hashed assets under `/assets/`; source maps and directory listings are not served. Runtime GET routes are:
+`serve` binds only to `127.0.0.1`, default port 8787, and validates loopback Host/Origin headers against the actual port. Static routes are `/`, `/index.html`, and allowlisted hashed assets under `/assets/`; source maps and directory listings are not served. Runtime GET routes also support HEAD without a response body:
 
 - `/api/manifest`: The versioned viewer manifest.
 - `/api/mesh/<layer-id>`: A listed layer's RAS mesh.
 - `/api/slice?axis=axial&index=0&wc=-600&ww=1500`: Display-windowed 8-bit PNG with `X-Slice-Index`. Axis also accepts `coronal` or `sagittal`; window parameters default to the shown values.
 - `/api/voxel?i=0&j=0&k=0`: `{hu, lps, ras}` for in-bounds integer native indices.
+- `/api/video-info`: `{"available":false}` by default; when configured, `{"available":true,"url":"/api/video","download_url":"/api/video?download=1"}`. No filesystem path is exposed. Availability indicates configuration, not codec playability.
+- `/api/video`: Only the explicitly configured MP4, or 404 when disabled. `?download=1` requests an attachment; other query parameters cannot select files.
 
-Responses use `Cache-Control: no-store`. Raw DICOM, volume arrays, labels, provenance, and video files have no route. Loopback guards are not user authentication or full anonymization. No public tunnel, hosting, telemetry, runtime CDN, or cloud tour service is part of the application.
+`serve --video-file tour.mp4` selects one existing regular `.mp4` by a path relative to the completed external workspace. Absolute paths, traversal, symlinks, missing files, and non-MP4 names fail startup with `E_VIDEO_FILE`. The server reopens the selected path with no-follow access for each media request; it does not serve a directory or all outputs.
+
+GET/HEAD media responses use `Content-Type: video/mp4`, `Accept-Ranges: bytes`, and a generic `Content-Disposition` filename of `ct-education-tour.mp4`, inline by default or attachment for download. A single byte range (bounded, suffix, or open-ended) returns 206 with `Content-Range`; malformed, multiple, or unsatisfiable ranges return 416 with `Content-Range: bytes */<size>`. Unranged requests return 200; HEAD omits the body. Reads are bounded to 64 KiB chunks and the advertised length.
+
+Responses use `Cache-Control: no-store`. Raw DICOM, volume arrays, labels, provenance, and unselected MP4 files have no route. Loopback guards are not user authentication or full anonymization. User-authorized private access through caller-managed authenticated routing may include the chosen MP4; a local reverse proxy must forward `Range` and preserve no-store. Keep deployment configuration private. Public tunnels, static workspace hosting, telemetry, runtime CDN, and cloud tour services remain outside the application.
+
+The "Watch the tour" action enables only on valid same-origin metadata. Media source attachment is deferred until user click, opening a native player modal with download and fullscreen controls. Closing pauses playback, detaches the source, reloads the element, clears the download link, and restores focus. A window capture-phase keydown handler routes Escape from focused native video controls to modal dismissal; during native fullscreen it does not consume Escape or close the modal, preserving browser behavior. Close-button and backdrop dismissal remain available. Unavailable video leaves the viewer usable. The UI uses neutral English copy and a high-tech visual style; maintainer-reported Chrome viewport checks are recorded in [test status](test.md), not iPhone Safari certification.
 
 Slice extraction is axial=`volume[k,:,:]`, coronal=`volume[:,j,:]`, sagittal=`volume[:,:,i]`, without backend flips or spatial resampling. Axial PNGs show windowed acquired frames, not original DICOM bytes. Other axes are source-grid cross-sections, not independent acquisitions or anatomical world-axis reformats for oblique data. Numerical HU is read from the native cache, not the 8-bit display. The viewer uses the source-plane affine and falls back to source-axis orientation labels where needed.
 
@@ -105,7 +113,7 @@ ct-edu render-video --workspace /path/to/external/new-workspace
 
 The completed workspace and built frontend are required, but `serve` need not be running. Defaults are 20 seconds, 15 fps, width 1280, height 720, port 0 (available ephemeral port), and `tour.mp4` inside the workspace. `--output` can specify a new relative or absolute MP4 path under that workspace; the parent must exist. Symlinks, traversal, and existing output are rejected. Option limits: finite duration in `(0,120]` seconds, integer fps in `1..60`, even width/height at least 2 and at most 1920x1080, port `0..65535`. Frame count is `ceil(duration * fps)` and encoded duration is `frames / fps`.
 
-The renderer starts a guarded loopback server and launches headless Playwright Chromium with a private temporary profile in a staging sibling of the workspace. Driver/browser temporary paths are external and debug logging is suppressed. Browser request routing allows only that exact loopback origin's GET/HEAD requests; other requests, WebSockets, and service workers are blocked. These are capture-browser controls, not OS-wide network isolation.
+The renderer starts a guarded loopback server with default `video_file=None`, preventing cyclic tour playback during capture, and launches headless Playwright Chromium with a private temporary profile in a staging sibling of the workspace. Driver/browser temporary paths are external and debug logging is suppressed. Browser request routing allows only that exact loopback origin's GET/HEAD requests; other requests, WebSockets, and service workers are blocked. These are capture-browser controls, not OS-wide network isolation.
 
 Capture waits for the viewer, fonts, and expected mesh count, then steps explicit frame times through a timed orbit and tour. With no annotations, it also sweeps native source slices; annotation tours retain their source selection. Full-viewport PNG screenshots include UI and educational warnings. Timing is explicit, but byte-identical rendering across browsers/platforms is not guaranteed.
 

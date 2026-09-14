@@ -105,6 +105,18 @@ ct-edu render-video --workspace /path/to/external/workspace --output /path/to/ex
 
 Output must be a new `.mp4` inside the external workspace. Relative output paths resolve under it; the parent must already exist. Existing files, symlinks, and traversal are rejected; no overwrite or automatic subdirectory creation is supported. Repository, input, and workspace remain pairwise disjoint, while the video belongs inside the workspace. See [video options](skills/ct_education.md#video-rendering) for limits and output details.
 
+### Optional Video Playback
+
+Workspace MP4 files have no route by default. To enable playback and download of one explicitly chosen file:
+
+```bash
+ct-edu serve --workspace /path/to/external/workspace --video-file tour.mp4
+```
+
+`--video-file` accepts a relative path to an existing regular `.mp4` inside the completed external workspace. Absolute paths, traversal, symlinks, and non-MP4 names are rejected at startup (`E_VIDEO_FILE`). This selects a single file, not all outputs; HTTP requests cannot select another path.
+
+The viewer enables "Watch the tour" only when video metadata is available and valid. Clicking it loads the player and attempts playback; closing pauses playback and removes its source. Download and native fullscreen controls remain available. Escape closes the modal even from focused video controls, except during native fullscreen, where the browser handles it. Unavailable video leaves the viewer usable. See the [HTTP contract](docs/rfc.md#local-viewer) and [bounded Chrome verification](docs/test.md#visual-qa-and-regressions). The renderer's internal server leaves video disabled, preventing cyclic playback during capture.
+
 ## Troubleshooting
 
 The CLI emits fixed error codes with exit code 2 on failure, 0 on success, and 130 on interruption.
@@ -119,6 +131,7 @@ The CLI emits fixed error codes with exit code 2 on failure, 0 on success, and 1
 | `E_ANNOTATIONS` | Check allowed keys, numeric types, radius, unique IDs, and in-bounds RAS positions. |
 | `E_FRONTEND_NOT_BUILT` | Run `npm --prefix frontend ci` and `npm --prefix frontend run build`. |
 | `E_PIXEL_DECODE` | Check the transfer syntax and installed decoder locally; do not share private tracebacks. |
+| `E_VIDEO_FILE` | Select an existing regular `.mp4` with a workspace-relative path; no absolute paths, traversal, or symlinks. Omit `--video-file` to disable playback. |
 | `E_VIDEO_DEPENDENCY_FFMPEG` | Install `ffmpeg` with `libx264` support on `PATH`. |
 | `E_VIDEO_DEPENDENCY_PLAYWRIGHT` | Install `'.[video]'` in the activated environment. |
 | `E_VIDEO_BROWSER` | Run `python -m playwright install chromium`; check platform browser dependencies and headless execution permissions. |
@@ -132,7 +145,9 @@ Input is read-only to the tool; input content symlinks are rejected. All runtime
 
 The default is local-only: no study uploads. A GPT review is allowed only with explicit per-case user approval of the material, purpose, and destination. General permission to build, test, improve, or release does not authorize uploads; agents cannot infer or self-grant permission. If any part of that authorization is unspecified, stop before transmitting. This exception does not authorize other providers or public disclosure. Raw patient data, private derivatives, identifiers, paths, and case facts never belong in public repositories/history, PRs, issues, docs, CI, logs, or assets. This documentation is not case-upload authorization, and the application has no upload route.
 
-The server binds only to `127.0.0.1`, checks Host and Origin, and uses `Cache-Control: no-store`. It serves generic frontend assets and allowlisted APIs, not raw volume files, provenance, or directories. MP4 output has no HTTP route. Container metadata stripping is not anonymization, and loopback controls are not user authentication. Do not expose a workspace through a static server, tunnel, or public hosting. There is no runtime CDN, telemetry, or cloud tour service.
+The server binds only to `127.0.0.1`, checks Host and Origin, and uses `Cache-Control: no-store`. It serves generic frontend assets and allowlisted APIs, not raw volume files, provenance, or directories. Only an explicitly selected `--video-file` MP4 gains playback/download routes. Container metadata stripping is not anonymization, and loopback controls are not user authentication.
+
+Static workspace serving, public tunnels, and public hosting remain prohibited. User-authorized private access through caller-managed authenticated routing may include the chosen MP4, without adding routes for other output files. A local reverse proxy must forward `Range` and preserve `Cache-Control: no-store`; deployment configuration stays private. There is no runtime CDN, telemetry, or cloud tour service.
 
 ## Agent Skill Integration
 

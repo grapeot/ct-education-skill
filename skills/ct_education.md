@@ -19,7 +19,7 @@ Type: Workflow / Tool. Outputs: external private workspace only. Created and upd
 - DICOM input is external and read-only. Repository, input, and output must be pairwise disjoint after real-path resolution, including equality, aliases, and ancestor relationships. Annotation files must be external to the repository and output. Input content symlinks are rejected.
 - Runtime data always stays external, including inventory, manifests, masks, meshes, screenshots, tours, and videos. Video output belongs inside the completed external workspace. No raw patient data, private derivatives, identifiers, case facts, or private paths in public repositories/history, PRs, issues, docs, examples, CI, logs, or frontend assets. Private aliases stay in caller configuration.
 - Default to no study uploads. A GPT review may receive only the material, for the purpose and destination, explicitly approved by the user for that case. General permission to build, test, improve, or release is not upload consent; agents cannot infer or self-grant permission. Stop before transmitting if any authorization scope is unspecified. This skill is not case-upload authorization, approves no other providers, and never permits public disclosure. The application has no upload route.
-- Use the guarded loopback server only; no static workspace serving, tunnels, or public hosting. Git/remote mutations require explicit authorization under [contributor rules](../AGENTS.md), and must be coordinated serially.
+- Use the guarded loopback server; no static workspace serving, public tunnels, or public hosting. User-authorized private access through caller-managed authenticated routing may include one explicitly chosen MP4, not all outputs. Local reverse proxies must forward `Range` and preserve `Cache-Control: no-store`; keep deployment configuration private. Git/remote mutations require explicit authorization under [contributor rules](../AGENTS.md), and must be coordinated serially.
 
 ## Resources
 
@@ -108,11 +108,21 @@ ct-edu serve --workspace /path/to/external/workspace --port 8787
 
 Open `http://127.0.0.1:8787`; stop with Ctrl+C. To view the annotation build, pass its workspace instead. The port defaults to 8787. The server is loopback-only with no host override or public publishing option.
 
+Optionally enable playback/download of one chosen MP4:
+
+```bash
+ct-edu serve --workspace /path/to/external/workspace --video-file tour.mp4
+```
+
+Video is disabled by default. `--video-file` accepts a relative path to an existing regular `.mp4` inside the completed workspace; absolute paths, traversal, symlinks, missing files, and non-MP4 names fail startup with `E_VIDEO_FILE`. HTTP requests cannot choose another file. `/api/video-info` returns `{"available":false}` by default or the fixed playback/download URLs when configured; this does not validate codec playability. See the [HTTP contract](../docs/rfc.md#local-viewer) for GET/HEAD and single-range 206/416 behavior.
+
+"Watch the tour" enables only for valid same-origin metadata. Clicking opens the player and attaches its source; closing pauses playback, removes the source and download link, reloads the element, and restores focus. Download and native fullscreen controls remain available. Escape closes the modal from focused video controls unless native fullscreen is active, when browser Escape behavior is preserved. No media source is attached before the click; unavailable video does not disable the viewer.
+
 Explore layer toggles/opacity, native slice indices/windowing, source-linked picks, annotation focus, and tour stops. Minimal manifest tours are expanded with available-layer/source stops; sufficiently complete tours are not duplicated. RAS x/y/z clipping is uncapped, and clipped-away mesh hits are filtered from picking. Do not interpret cut holes as anatomy. Interactive camera transitions depend on the current view; video rendering separately controls frame time.
 
 The 3D native-slice plane is optional and defaults off for overview/anatomy; the 2D source panel remains available. Anatomy tour cameras fit actual requested layer bounds, while candidate focus remains separate. Mobile panels collapse to reduce obstruction.
 
-The read-only APIs are `/api/manifest`, `/api/mesh/<layer-id>`, `/api/slice?axis=axial&index=0&wc=-600&ww=1500`, and `/api/voxel?i=0&j=0&k=0`. Slice axis also accepts `coronal` and `sagittal`; `wc`/`ww` default to the shown values. Slice responses are PNG with `X-Slice-Index`; voxel responses contain `hu`, `lps`, and `ras`. Raw volumes, labels, and provenance are not served.
+The read-only image APIs are `/api/manifest`, `/api/mesh/<layer-id>`, `/api/slice?axis=axial&index=0&wc=-600&ww=1500`, and `/api/voxel?i=0&j=0&k=0`. Slice axis also accepts `coronal` and `sagittal`; `wc`/`ww` default to the shown values. Slice responses are PNG with `X-Slice-Index`; voxel responses contain `hu`, `lps`, and `ras`. Raw volumes, labels, and provenance are not served.
 
 ### Video Rendering
 
@@ -142,7 +152,7 @@ Frame count is `ceil(duration * fps)` and resulting duration is `frames / fps`. 
 
 The full viewport is captured, including UI and educational warnings. A frame-stepped orbit/tour is used; without annotations it also sweeps source slices, while annotation tours retain their selection. This provides an explicit timeline, not a byte-identical cross-platform rendering guarantee. ffmpeg encodes no-audio H.264 (`libx264`, `yuv420p`, CRF 20, faststart MP4); metadata stripping does not anonymize visible content.
 
-The browser profile and temporary output are staged privately as a sibling of the external workspace. Publication uses an exclusive hard link with owner-only `0600` mode, so staging and destination must share a filesystem supporting hard links. Existing output is never overwritten, even if created during capture. Browser/server/encoder resources and temporary data are cleaned up on completion or handled failure. The capture browser allows only its exact loopback origin's GET/HEAD requests and blocks WebSockets/service workers; this is not OS-wide network isolation. MP4 output has no serving route.
+The browser profile and temporary output are staged privately as a sibling of the external workspace. Publication uses an exclusive hard link with owner-only `0600` mode, so staging and destination must share a filesystem supporting hard links. Existing output is never overwritten, even if created during capture. Browser/server/encoder resources and temporary data are cleaned up on completion or handled failure. The capture browser allows only its exact loopback origin's GET/HEAD requests and blocks WebSockets/service workers; this is not OS-wide network isolation. Its internal server uses default `video_file=None` to avoid cyclic playback during generation. MP4 serving requires a separate explicit `serve --video-file` selection.
 
 ## Coordinates and Outputs
 
@@ -162,7 +172,7 @@ Completed external workspaces contain:
 | `labels-grid.json` | Label `shape`, `affine_lps`, `stride_kji`, `encoding: bitfield`, and `bits` mapping. |
 | `meshes/<layer-id>.json` | Flat RAS millimeter `positions` and triangle `indices`. Disposable reduced-grid derivatives; empty or over-budget surfaces can be omitted. |
 | `provenance.json` | Private source mappings and `cpu-threshold-v1` algorithm record. Never served or shared publicly. |
-| `tour.mp4` or chosen MP4 name | Optional private video output created by `render-video`, inside the completed workspace. Not listed as a served manifest asset. |
+| `tour.mp4` or chosen MP4 name | Optional private video output created by `render-video`, inside the completed workspace. Not a manifest asset; playback/download requires explicit `serve --video-file` selection. |
 
 Even the sanitized manifest is private runtime data. Source HU is the intensity reference; the reduced-grid label affine is the spatial reference for masks. Downsampled surfaces cannot establish small-branch completeness.
 
@@ -179,7 +189,7 @@ python -B -m unittest discover -s tests -p test_pipeline.py -v
 npm --prefix frontend test
 ```
 
-Use `python -B -m unittest discover -s tests -v` for the full Python suite. With `ffmpeg` available, prefix it with `CT_EDU_VIDEO_FFMPEG_SMOKE=1` to include real encoding of synthetic frames; the smoke still uses a mocked browser/server. The current snapshot has 69 Python and 32 frontend tests passing with zero skips when smoke is enabled. Default Python discovery skips that one smoke test. Maintainer-reported browser/video checks are separately recorded in [test status](../docs/test.md); neither those checks nor unit tests certify segmentation quality for a new input.
+Use `python -B -m unittest discover -s tests -v` for the full Python suite. With `ffmpeg` available, prefix it with `CT_EDU_VIDEO_FFMPEG_SMOKE=1` to include real encoding of synthetic frames; the smoke still uses a mocked browser/server. All 89 Python and 42 frontend tests passed in the independent rerun with zero skips. Default Python discovery skips that one smoke test. See [test status](../docs/test.md) for maintainer-reported Chrome playback checks through authenticated private routing across desktop, portrait, and landscape viewports. Those checks are not iPhone Safari certification; neither unit nor browser checks certify segmentation quality for a new input.
 
 ## Learned Pitfalls
 
