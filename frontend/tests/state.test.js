@@ -78,6 +78,16 @@ test("selecting a voxel drives all three native slice indices", () => {
   assert.deepEqual(next.index, { axial: 6, coronal: 2, sagittal: 2 });
 });
 
+test("all anatomy layers start visible with their original opacity", () => {
+  const data = manifest();
+  data.layers.push({ id: "bones", name: "Bone candidates" });
+  const state = createAppState(data);
+  assert.deepEqual(visibleLayerIds(state), data.layers.map((layer) => layer.id));
+  assert.deepEqual(state.layers.map((layer) => layer.opacity), [0.36, 0.88, 0.42, 0.16]);
+  assert.equal(state.clip.enabled, false);
+  assert.equal(state.showSlice3d, false);
+});
+
 test("out-of-bounds selection is rejected and does not move slice indices", () => {
   const start = createAppState(manifest());
   const next = selectVoxel(start, 99, 0, 0, manifest().shape);
@@ -129,7 +139,7 @@ test("minimal API tour is expanded with educational layer and source stops", () 
   assert.ok(ids.includes("fallback-source-evidence"));
   assert.equal(defaultLayerOpacity("lungs"), 0.36);
   assert.equal(defaultLayerOpacity("airways"), 0.88);
-  assert.equal(defaultLayerVisible("vessels"), false);
+  assert.equal(defaultLayerVisible("vessels"), true);
   assert.equal(defaultLayerVisible("lungs"), true);
   const candidate = stops.find((stop) => stop.id === "tour-candidate-1");
   assert.equal(slice3dDefaultForStop(candidate), true);

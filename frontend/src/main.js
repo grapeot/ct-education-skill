@@ -1,6 +1,8 @@
 import { blobToCanvas, createApi } from "./api.js";
 import { rasToVoxel, voxelToRas } from "./affine.js";
 import { copy } from "./copy.js";
+import { mountThemePicker, PREVIEW_TITLE } from "./theme.js";
+import "./themes.css";
 import {
   displayPixelToVoxel,
   shouldFlipDisplayRows,
@@ -396,6 +398,18 @@ function exposeHooks() {
     getSelection() {
       return state ? state.selection : null;
     },
+    getViewState() {
+      return scene ? {
+        camera: scene.camera.position.toArray(),
+        target: scene.controls.target.toArray(),
+        layers: state.layers.map(({ id, visible, opacity }) => ({ id, visible, opacity })),
+        clip: { ...state.clip },
+        axis: state.axis,
+        index: { ...state.index },
+        wc: state.wc,
+        ww: state.ww,
+      } : null;
+    },
     setOrbit(options) {
       if (scene) scene.setOrbit(options || {});
     },
@@ -609,6 +623,7 @@ async function loadCase() {
     return;
   }
   scene.setAnnotations(manifest.annotations);
+  scene.setTheme(currentTheme());
   scene.setSlice3dVisible(false);
   tourStops = expandTour(manifest);
   renderWarnings(refs, manifest.warnings || []);
@@ -631,7 +646,13 @@ async function loadCase() {
 }
 
 refs = mountApp(document.getElementById("app"));
-document.title = copy.appTitle;
+const currentTheme = mountThemePicker(document.querySelector(".shell"), (theme) => {
+  if (scene) {
+    scene.setTheme(theme);
+    scene.resize();
+  }
+});
+document.title = PREVIEW_TITLE;
 wire();
 exposeHooks();
 loadCase();

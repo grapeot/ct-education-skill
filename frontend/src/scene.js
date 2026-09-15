@@ -184,16 +184,19 @@ export class ObservatoryScene {
     const max = new THREE.Vector3(...this.bounds.max);
     const box = new THREE.Box3(min, max);
     const helper = new THREE.Box3Helper(box, 0x3a3f46);
+    this.boundsHelper = helper;
     this.scene.add(helper);
     const size = max.clone().sub(min);
     const gridSize = Math.max(size.x, size.y, 1);
     const grid = new THREE.GridHelper(gridSize, 18, 0x2a3036, 0x161a1e);
+    this.grid = grid;
     grid.rotation.x = Math.PI / 2;
     grid.position.set((min.x + max.x) / 2, (min.y + max.y) / 2, min.z);
     this.scene.add(grid);
   }
 
   _addRasLabels() {
+    this.rasLabels = [];
     const [min, max] = [this.bounds.min, this.bounds.max];
     const cx = (min[0] + max[0]) / 2;
     const cy = (min[1] + max[1]) / 2;
@@ -209,8 +212,25 @@ export class ObservatoryScene {
     for (const [text, position, color] of placements) {
       const sprite = makeTextSprite(text, color);
       sprite.position.set(position[0], position[1], position[2]);
+      this.rasLabels.push(sprite);
       this.scene.add(sprite);
     }
+  }
+
+  setTheme({ background, ink, line }) {
+    // Presentation only: reuse the renderer, camera, meshes, and native texture.
+    this.scene.background.set(background);
+    this.renderer.setClearColor(background, 1);
+    this.boundsHelper.material.color.set(line);
+    this.grid.material.transparent = true;
+    if (this.grid.material.vertexColors) {
+      this.grid.material.vertexColors = false;
+      this.grid.material.needsUpdate = true;
+    }
+    this.grid.material.color.set(line);
+    this.grid.material.opacity = 0.22;
+    for (const sprite of this.rasLabels) sprite.material.color.set(ink);
+    this.renderer.render(this.scene, this.camera);
   }
 
   fitBounds() {
@@ -277,6 +297,8 @@ export class ObservatoryScene {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    // Resizing clears the drawing buffer; repaint before the next browser frame.
+    this.renderer.render(this.scene, this.camera);
   }
 
   _loop() {
