@@ -184,9 +184,56 @@ def main():
     links.new(marker_mix.outputs[0], out.inputs[0])
     marker_curve.materials.append(marker_material)
     bpy.context.view_layer.update()
-    airway_points = [Vector(p) for p in objects['airways'].bound_box] if 'airways' in objects else [Vector((0, 0, 0))]
-    airway_center = sum(airway_points, Vector()) / len(airway_points)
-    context_points = [Vector(p) for layer in ('airways', 'vessels') if layer in objects for p in objects[layer].bound_box]
+    local = config['candidate_geometry']
+    local_planes = []
+    local_surface = None
+    local_box = None
+    if local:
+        for item in local['planes']:
+            obj, texture, opacity = plane_object('Local native HU / ' + item['plane']['axis'])
+            obj.data.materials[0].surface_render_method = 'BLENDED'
+            update_plane(obj, texture, item['plane'], item['image'])
+            local_planes.append((obj, opacity))
+        surface_path = local['density_mesh'] or local['mesh']
+        if surface_path:
+            data = json.loads((root / surface_path).read_text())
+            xyz, indices = data['positions'], data['indices']
+            mesh = bpy.data.meshes.new('Exploratory CT isodensity / boundary unverified')
+            mesh.from_pydata([world(xyz[j:j + 3]) for j in range(0, len(xyz), 3)], [],
+                             [indices[j:j + 3] for j in range(0, len(indices), 3)])
+            mesh.update()
+            local_surface = bpy.data.objects.new(mesh.name, mesh)
+            scene.collection.objects.link(local_surface)
+            local_surface['representation_type'] = local['density_display']['representation_type']
+            local_surface['threshold_hu'] = local['density_display']['threshold_hu']
+            local_surface['verified_nodule_boundary'] = False
+            local_surface['strict_boundary_status'] = local['status']
+            material = bpy.data.materials.new('Candidate violet / educational color')
+            material.use_nodes = True
+            material.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.48, 0.25, 0.7, 1)
+            material.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.38
+            mesh.materials.append(material)
+            for polygon in mesh.polygons:
+                polygon.use_smooth = True
+        else:
+            curve = bpy.data.curves.new('Localized region box / not a segmented surface', 'CURVE')
+            curve.dimensions, curve.bevel_depth = '3D', 0.00005
+            curve.bevel_resolution = 1
+            half = local['locator_half_mm'] * 0.001
+            origin_local = world(local['center_ras'])
+            corners = [origin_local + Vector((x * half, y * half, z * half))
+                       for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+            for a in range(8):
+                for b in range(a + 1, 8):
+                    if (a ^ b) in (1, 2, 4):
+                        spline = curve.splines.new('POLY')
+                        spline.points.add(1)
+                        spline.points[0].co = (*corners[a], 1)
+                        spline.points[1].co = (*corners[b], 1)
+            curve.materials.append(marker_material)
+            local_box = bpy.data.objects.new(curve.name, curve)
+            scene.collection.objects.link(local_box)
+        emission.inputs['Color'].default_value = (0.65, 0.38, 1, 1)
 
     timings = []
     for i, state in enumerate(config['frames']):
@@ -195,6 +242,13 @@ def main():
         update_plane(plane_obj, plane_texture, plane, state['image'])
         plane_obj.hide_render = not state['show_plane']
         plane_opacity.inputs[1].default_value = state['plane_opacity']
+        for j, (obj, opacity) in enumerate(local_planes):
+            obj.hide_render = not state['depth_view']
+            opacity.inputs[1].default_value = (0.07 if j == 0 else 0.045) if local_surface else (1.0 if j == 0 else 0.32)
+        if local_surface:
+            local_surface.hide_render = not state['depth_view']
+        if local_box:
+            local_box.hide_render = not state['depth_view']
         plane_obj.data.materials[0].surface_render_method = 'BLENDED' if state['depth_view'] else 'DITHERED'
         for j, (obj, rest, opacity) in enumerate(stack):
             entry = state['stack_entries'][j]
@@ -236,26 +290,14 @@ def main():
         target = origin * state['face']
         depth_base_width = None
         if state['depth_view']:
-            # Preserve the source screen basis, then tilt it to expose real mesh depth.
+            # Orbit the supplied patient point, never an airway or whole-volume center.
             progress = state['outro_progress']
-            initial_rotation = face_basis @ Quaternion((1, 0, 0), math.radians(18))
-            final_rotation = face_basis @ Quaternion((1, 0, 0), math.radians(36)) @ Quaternion((0, 0, 1), math.radians(10))
+            initial_rotation = face_basis @ Quaternion((1, 0, 0), math.radians(25)) @ Quaternion((0, 1, 0), math.radians(-25))
+            final_rotation = face_basis @ Quaternion((1, 0, 0), math.radians(25)) @ Quaternion((0, 1, 0), math.radians(25))
             rotation = initial_rotation.slerp(final_rotation, progress)
             candidate_target = world(state['locator']['position_ras']) if state['locator'] else origin
-            target = candidate_target.lerp(airway_center, progress)
-            full_width = max(plane['full_size_mm'][0], plane['full_size_mm'][1] * aspect) * 0.001
-            initial_extents = [initial_rotation.inverted() @ (p - candidate_target) for p in context_points]
-            final_extents = [final_rotation.inverted() @ (p - airway_center) for p in airway_points]
-            initial_fit = max((2 * max(abs(p.x), abs(p.y) * aspect) for p in initial_extents), default=0)
-            final_fit = max((2 * max(abs(p.x), abs(p.y) * aspect) for p in final_extents), default=0)
-            depth_base_width = max(full_width * 0.72, initial_fit / 0.8, final_fit / (0.8 * 0.92 * 0.9))
-            full_center = world(plane['full_center_ras'])
-            full_corners = [full_center + sx * u * plane['full_size_mm'][0] * 0.0005
-                            + sy * v * plane['full_size_mm'][1] * 0.0005 for sx in (-1, 1) for sy in (-1, 1)]
-            plane_extents = [initial_rotation.inverted() @ (p - candidate_target) for p in full_corners]
-            wide_fit = max(2 * max(abs(p.x), abs(p.y) * aspect) for p in plane_extents) / 0.88
-            focus = 1.0 if state['inspection_scale'] <= 0.92 else (1 - state['inspection_scale']) / 0.08
-            depth_base_width = max(depth_base_width, wide_fit) * (1 - focus) + depth_base_width * focus
+            target = candidate_target
+            depth_base_width = 0.1 * max(1, aspect)
             field_width = depth_base_width * state['inspection_scale']
         distance = field_width * camera_data.lens / camera_data.sensor_width
         camera.rotation_mode = 'QUATERNION'
@@ -263,7 +305,7 @@ def main():
         camera.location = target + rotation @ Vector((0, 0, distance))
         camera_data.type = 'ORTHO' if state['face'] == 1 or state['depth_view'] else 'PERSP'
         camera_data.ortho_scale = field_width
-        marker_obj.hide_render = not (state['depth_view'] and state['locator'] and state['marker_opacity'] > 0)
+        marker_obj.hide_render = True
         marker_mix.inputs[0].default_value = state['marker_opacity']
         if state['locator']:
             marker_center = world(state['locator']['position_ras'])
@@ -297,6 +339,13 @@ def main():
         metadata['locator_ring_center_ras'] = state['locator']['position_ras'] if not marker_obj.hide_render else None
         metadata['locator_ring_radius_mm'] = state['locator']['radius_mm'] if not marker_obj.hide_render else None
         metadata['visible_layers'] = [layer for layer, obj in objects.items() if not obj.hide_render]
+        metadata['candidate_mode'] = local['status'] if local and state['depth_view'] else None
+        metadata['local_plane_count'] = sum(not obj.hide_render for obj, opacity in local_planes)
+        metadata['density_surface_visible'] = bool(local_surface and not local_surface.hide_render)
+        metadata['density_display'] = local['density_display'] if local and state['depth_view'] else None
+        if local_surface and state['depth_view']:
+            projected = [project(Vector(p)) for p in local_surface.bound_box]
+            metadata['density_surface_bounds_pixels'] = [[min(p[axis] for p in projected), max(p[axis] for p in projected)] for axis in (0, 1)]
         (root / 'left' / f'{i:05d}.json').write_text(json.dumps(metadata))
         if i == 0:
             for image in bpy.data.images:

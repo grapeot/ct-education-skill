@@ -4,15 +4,24 @@
 
 The backend, all five CLI commands, and Three.js frontend are implemented on the current branch. The combined implementation adds the 36-second offline Blender film and explicit demo/film selection inside Guided walkthrough, retaining the browser demonstration and Aurora default. Segmentation remains a limited CPU heuristic baseline, not validated models or high-fidelity clinical masks. Reviewed labelmap import, precise nodule-mask review, arbitrary oblique clipping, and anatomical oblique resampling remain unsupported.
 
-Current verification on 2026-09-14: the documentation reviewer independently reran **all 126 Python tests with ffmpeg smoke enabled and all 53 frontend tests**, with zero skips. This includes all 27 cinematic tests; the production build remains a prior maintainer-reported pass. Earlier independent GPT Chrome QA through authorized private HTTPS passed scoped desktop/phone/landscape two-video functionality, not continuous human aesthetic acceptance of the revised ending. See [test status](test.md) for scope and attribution.
+Current verification on 2026-09-14: the documentation reviewer independently reran **all 136 Python tests with ffmpeg smoke enabled and all 53 frontend tests**, with zero skips. This includes 28 cinematic and 9 candidate-geometry tests; the production build remains a prior maintainer-reported pass. Earlier independent GPT Chrome QA through authorized private HTTPS passed scoped desktop/phone/landscape two-video functionality, not new playback or continuous human aesthetic acceptance of the persistent-N1 ending. See [test status](test.md) for scope and attribution.
 
-The maintainer confirms PR4 (Aurora) and PR5 (36-second design) are merged with privacy review and CI. The user authorized film rendering and code publication after the design PR. The whole-implementation GLM privacy gate and subsequent commit/PR submission remain pending with the coordinating maintainer; no PR6 creation or remote CI result is claimed. The maintainer reports the new private film is selected alongside the retained 30-second demo on one application server in the primary checkout behind caller-managed authenticated routing. This documentation worker performs no source, Git, or server operations.
+PR4, PR5, and PR6 are merged per coordinating maintainer confirmation (observed merge `c892613`). No new PR has been created for `feat/visible-nodule-focus`. The coordinating maintainer owns all Git operations, the whole-implementation GLM privacy gate, and subsequent submission; no new privacy or remote CI pass is claimed. The retained browser demo and caller-managed private serving contract are unchanged. This documentation worker performs no source/test edits, Git commands, renders, browser QA, or application-server changes.
 
-The revised film completed at 36 seconds, 1920x1080, 24 fps with 864 Blender frames and full validation/decode per maintainer confirmation, without interpolation or audio. Imagery before 28 seconds, including the 26-28 second parity proof, is unchanged. The 28-33 second left view retains true 3D branch context and a world-space locator while the right zooms native CT; the ending fades left context to airway candidates with gentle arc/narrowing and a 35.5-36 second hold. Right CT/ruler stay fixed after 30 seconds, and the left ruler disappears with its plane. Native HU is unchanged; no capillaries or nodules are invented. All outputs, including `.blend`, stay private. P2 mobile-inline/ruler-label polish remains non-blocking; clinical and continuous human aesthetic certification are not claimed.
+The latest film completed at 36 seconds, 1920x1080, 24 fps with 864 Blender frames and full validation/decode per maintainer confirmation, without interpolation or audio. Imagery before 28 seconds, including the 26-28 second parity proof, is unchanged. From 28-36 seconds, N1 brackets and leaders persist in both panels; the left renders a physical native-HU ROI with optional exploratory density surface or planes and wire-locator fallback. Its camera stays locked to N1 through a 50-degree orbit from 30-35.5 seconds, then holds. Right CT/ruler stay fixed after 30 seconds; the qualified left ruler persists. Strict boundary rejection remains separate from density display, with the runtime-threshold disclaimer on frame. Native HU and interactive locators are unchanged by film-only postprocessing. All candidate evidence and `.blend` outputs stay private. P2 mobile-inline/ruler-label polish remains non-blocking; clinical and continuous human aesthetic certification are not claimed.
 
 ## Changelog
 
-### 2026-09-14 (3D depth and airway ending revision)
+### 2026-09-14 (persistent N1 and exploratory density surface)
+
+- Replaced the final sequence with persistent dual-panel N1 exterior brackets, offset labels, and leaders at 28-36 seconds, addressing weak candidate visibility without covering focal pixels. The left now renders the local native-HU ROI rather than airway-centered context; pre-28-second imagery is unchanged.
+- Added optional exploratory isodensity display at the exact runtime HU threshold for a bounded non-edge selected component passing basic checks. Threshold sensitivity or lower-threshold leakage still leaves `mesh=None` and `report.status=localized_region_boundary_unverified`; the surface is not an accepted nodule boundary. Unsafe selected components use native-HU planes and a wire locator. ROI arrays, masks, trials, and provenance remain external under private `candidate/` and run records, never public case examples.
+- Configured a 50-degree left camera orbit from 30-35.5 seconds targeting N1, with right CT/ruler fixed after 30 seconds and a final half-second hold. The maintainer reports the latest 36-second 1920x1080/24 fps film passed validation/decode with 864 frames; this is not new browser or aesthetic acceptance.
+- Refreshed only the eight owned English documents from a generic Cursor rough draft and actual source/test review. Independently reran 136 Python tests including smoke and all 10 hygiene checks, plus 53 frontend tests: all passed, zero skips. The cinematic/candidate subset increased from 35 to 37 with exact-isovalue and runtime-caption tests. No source/test or Git changes by this worker; current GLM privacy review and submission remain with the coordinating maintainer.
+
+### 2026-09-14 (historical 3D depth and airway ending revision)
+
+Superseded by the persistent-N1 sequence above: the airway-only ending, disappearing locator/left ruler, and playback records below describe that earlier cut, not current final-shot behavior.
 
 - Replaced the final flat left CT close-up with near-top 3D airway/vascular context, faint envelope, translucent source plane, and a world-space supplied-candidate ring. The right remains the native CT zoom; source HU and sampling are unchanged.
 - Replaced the overview return with an airway-only ending: fade left plane/envelope/vascular context/locator over 33-33.6 seconds, keep bones hidden, narrow the field 10% through an approximately 21-degree camera arc, and hold at 35.5-36 seconds. Right CT and its metric ruler remain fixed after 30 seconds; remove the left ruler with its plane.
@@ -121,7 +130,7 @@ The coordinating maintainer confirms active protection on `master`: PRs required
 - [x] Video export with private staging and no-overwrite MP4 publication.
 - [x] CLI/user documentation and RFC updated for implemented v0.1.
 - [x] Optional two-video HTTP routes and click-only playback/download UI, preserving legacy metadata.
-- [x] Current independent rerun: all 126 Python tests with encoder smoke, including 27 cinematic tests, and all 53 frontend tests passed; prior production build passed per maintainer.
+- [x] Current independent rerun: all 136 Python tests with encoder smoke, including 28 cinematic and 9 candidate-geometry tests, and all 53 frontend tests passed; prior production build passed per maintainer.
 - [x] Frontend ASCII hygiene failure resolved and full Python suite rerun.
 - [x] Maintainer-confirmed remote `master` protection.
 - [x] Historical scanner integration and local full-suite verification.
@@ -129,10 +138,10 @@ The coordinating maintainer confirms active protection on `master`: PRs required
 - [x] PR1 merged via normal squash after required CI passed; scaffold/PR1 GLM privacy reviews passed.
 - [x] PR2 merged per maintainer confirmation.
 - [x] Maintainer-reported Chrome playback through authenticated private routing across desktop, portrait, and landscape viewports, including 206 seeking and close cleanup.
-- [x] PR4 Aurora and PR5 36-second design merged with privacy review and CI per maintainer confirmation.
+- [x] PR4, PR5, and PR6 merged per maintainer confirmation (observed merge `c892613`).
 - [x] Authorized 36-second 1920x1080/24 fps film, 864 frames, no interpolation/audio, and bounded functional QA.
-- [x] Revised 3D depth and airway-only ending, unchanged pre-28-second imagery, and maintainer-confirmed full artifact validation/decode.
-- [ ] Whole-implementation GLM privacy gate, subsequent commit/PR submission, and remote CI outcome, owned by the coordinating maintainer; no PR6 result claimed.
+- [x] Persistent N1/local native-HU ROI with optional exploratory density surface, unchanged pre-28-second imagery, and maintainer-confirmed full artifact validation/decode.
+- [ ] Whole-implementation GLM privacy gate, subsequent commit/PR submission, and remote CI outcome for `feat/visible-nodule-focus`, owned by the coordinating maintainer; no new PR created.
 - [ ] Non-blocking P2 polish: mobile inline size and some ruler-label offsets; fullscreen/direct play available.
 - [ ] Heuristic mask-quality review and refinement, with authorized evidence external.
 - [ ] Deferred: reviewed labelmap import and oblique viewing extensions.
