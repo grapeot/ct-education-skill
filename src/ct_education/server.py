@@ -81,19 +81,28 @@ class ViewerServer(ThreadingHTTPServer):
         pass
 
 
-def create_server(workspace, port=8787, require_frontend=False, *, video_file=None):
+def create_server(workspace, port=8787, require_frontend=False, *, video_file=None, rendered_video_file=None):
     _, workspace = boundaries(workspace=workspace)
-    if video_file is not None:
+    videos = {}
+    versions = []
+    for selected, identifier, title, url, filename in (
+        (video_file, "demo", "Interface demo", "/api/video", "ct-education-tour.mp4"),
+        (rendered_video_file, "rendered", "Rendered film", "/api/video/rendered", "ct-education-film.mp4"),
+    ):
+        if selected is None:
+            continue
         try:
-            video_file = Path(video_file)
-            if video_file.is_absolute() or ".." in video_file.parts or video_file.suffix.lower() != ".mp4":
+            selected = Path(selected)
+            if selected.is_absolute() or ".." in selected.parts or selected.suffix.lower() != ".mp4":
                 raise ValueError
-            with local_file(workspace, video_file) as stream:
+            with local_file(workspace, selected) as stream:
                 metadata = os.fstat(stream.fileno())
                 if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < 0:
                     raise ValueError
         except (OSError, PipelineError, TypeError, ValueError):
             raise PipelineError("E_VIDEO_FILE") from None
+        videos[url] = (selected, filename)
+        versions.append({"id": identifier, "title": title, "url": url, "download_url": url + "?download=1"})
     frontend = REPO / "frontend" / "dist"
     if require_frontend and not (frontend / "index.html").is_file():
         raise PipelineError("E_FRONTEND_NOT_BUILT")
@@ -149,15 +158,15 @@ def create_server(workspace, port=8787, require_frontend=False, *, video_file=No
                 if self.command != "HEAD":
                     self.wfile.write(body)
 
-            def serve_video(self, download):
-                with local_file(workspace, video_file) as stream:
+            def serve_video(self, selected, filename, download):
+                with local_file(workspace, selected) as stream:
                     metadata = os.fstat(stream.fileno())
                     if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < 0:
                         raise PipelineError("E_VIDEO_FILE")
                     size = metadata.st_size
                     disposition = "attachment" if download else "inline"
                     headers = [("Accept-Ranges", "bytes"),
-                               ("Content-Disposition", f'{disposition}; filename="ct-education-tour.mp4"')]
+                               ("Content-Disposition", f'{disposition}; filename="{filename}"')]
                     start, end, code = 0, size - 1, 200
                     ranges = self.headers.get_all("Range", [])
                     if ranges:
@@ -234,14 +243,14 @@ def create_server(workspace, port=8787, require_frontend=False, *, video_file=No
                     if path == "/api/manifest" and not query:
                         self.respond(200, manifest_bytes, "application/json")
                     elif path == "/api/video-info" and not query:
-                        info = {"available": video_file is not None}
-                        if video_file is not None:
-                            info.update(url="/api/video", download_url="/api/video?download=1")
+                        info = {"available": bool(versions)}
+                        if versions:
+                            info.update(url=versions[0]["url"], download_url=versions[0]["download_url"], versions=versions)
                         self.respond(200, json.dumps(info).encode(), "application/json")
-                    elif path == "/api/video" and video_file is not None:
+                    elif path in videos:
                         if query not in ({}, {"download": ["1"]}):
                             raise ValueError
-                        self.serve_video(download=bool(query))
+                        self.serve_video(*videos[path], download=bool(query))
                     elif path.startswith("/api/mesh/") and not query:
                         name = path.removeprefix("/api/mesh/")
                         if name not in layer_ids:

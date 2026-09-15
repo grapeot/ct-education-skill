@@ -3,7 +3,7 @@ import { formatNumber } from "./affine.js";
 import { sliceExtent } from "./mapping.js";
 import { FALLBACK_LAYER_COLORS, layerHintForId, tourFallbackTitle } from "./state.js";
 import { isCssHexColor } from "./validate.js";
-import { VIDEO_DOWNLOAD_NAME } from "./video.js";
+import { VIDEO_VERSIONS } from "./video.js";
 
 function escapeHtml(value) {
   return String(value)
@@ -161,10 +161,15 @@ export function mountApp(root) {
             <button type="button" data-ref="video-close" aria-label="${escapeHtml(copy.a11y.videoClose)}">${escapeHtml(copy.video.close)}</button>
           </div>
           <p class="video-body">${escapeHtml(copy.video.body)}</p>
+          <div class="video-versions" role="group" aria-label="${escapeHtml(copy.video.title)}">
+            ${VIDEO_VERSIONS.map((version) => `<button type="button" data-ref="video-${version.id}" aria-pressed="false" disabled>${escapeHtml(version.title)}</button>`).join("")}
+          </div>
+          <p class="video-body" data-ref="video-description"></p>
           <p class="video-status" data-ref="video-status" role="status"></p>
           <video data-ref="video" controls playsinline preload="metadata" aria-label="${escapeHtml(copy.a11y.videoPlayer)}"></video>
           <div class="video-foot">
-            <a class="video-download" data-ref="video-download" download="${escapeHtml(VIDEO_DOWNLOAD_NAME)}">${escapeHtml(copy.video.download)}</a>
+            <a class="video-download" data-ref="video-play" target="_blank" rel="noopener noreferrer">${escapeHtml(copy.video.play)}</a>
+            <a class="video-download" data-ref="video-download">${escapeHtml(copy.video.download)}</a>
           </div>
         </div>
       </div>
@@ -494,6 +499,22 @@ export function applyVideoModal(refs, videoState, message) {
   const open = Boolean(videoState && videoState.open);
   refs["video-backdrop"].classList.toggle("hidden", !open);
   refs["video-dialog"].setAttribute("aria-hidden", open ? "false" : "true");
+  const selected = VIDEO_VERSIONS.find((version) => version.id === videoState?.selectedId);
+  for (const version of VIDEO_VERSIONS) {
+    const button = refs[`video-${version.id}`];
+    button.disabled = !videoState?.versions.some((item) => item.id === version.id);
+    button.setAttribute("aria-pressed", String(selected?.id === version.id));
+  }
+  refs["video-description"].textContent = selected ? copy.video[`${selected.id}Description`] : "";
+  if (open && selected) {
+    refs["video-play"].setAttribute("href", selected.url);
+    refs["video-download"].setAttribute("href", selected.download_url);
+    refs["video-download"].setAttribute("download", selected.filename);
+  } else {
+    refs["video-play"].removeAttribute("href");
+    refs["video-download"].removeAttribute("href");
+    refs["video-download"].removeAttribute("download");
+  }
   if (refs["video-status"]) {
     refs["video-status"].textContent = message || "";
     refs["video-status"].classList.toggle("hidden", !message);

@@ -21,7 +21,7 @@ from ct_education.server import create_server
 MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + bytes(range(256))
 
 
-class VideoHTTPTests(unittest.TestCase):
+class VideoHTTPFixture(unittest.TestCase):
     def setUp(self):
         base = Path(tempfile.gettempdir()).resolve()
         if base == REPO or REPO in base.parents:
@@ -36,6 +36,9 @@ class VideoHTTPTests(unittest.TestCase):
         self.video = self.workspace / self.relative
         self.video.parent.mkdir()
         self.video.write_bytes(MP4)
+        self.rendered_relative = "videos/synthetic-rendered-source.mp4"
+        self.rendered = self.workspace / self.rendered_relative
+        self.rendered.write_bytes(MP4[::-1])
         (self.workspace / "other.mp4").write_bytes(b"synthetic-hidden-video")
         (self.workspace / "provenance.json").write_bytes(b"synthetic-hidden-provenance")
         self.manifest = {
@@ -60,10 +63,11 @@ class VideoHTTPTests(unittest.TestCase):
         (static / "assets" / "index-12345678.js").write_text("export const synthetic = true;")
 
     @contextmanager
-    def running(self, enabled=True):
+    def running(self, enabled=True, rendered=False):
         with patch("ct_education.server.REPO", self.static_repo):
             server = create_server(self.workspace, 0, True,
-                                   video_file=self.relative if enabled else None)
+                                   video_file=self.relative if enabled else None,
+                                   rendered_video_file=self.rendered_relative if rendered else None)
         self.assertEqual(server.server_address[0], "127.0.0.1")
         thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
         thread.start()
@@ -97,6 +101,9 @@ class VideoHTTPTests(unittest.TestCase):
             self.assertNotIn("Access-Control-Allow-Origin", result)
             self.assertNotIn("Transfer-Encoding", result)
             self.assertNotIn(self.video.name, str(result))
+            self.assertNotIn(self.rendered.name, str(result))
+            self.assertNotIn(self.video.name.encode(), body)
+            self.assertNotIn(self.rendered.name.encode(), body)
             self.assertNotIn(str(self.root), str(result))
             self.assertNotIn(b"synthetic-hidden", body)
             if method == "HEAD":
@@ -109,6 +116,7 @@ class VideoHTTPTests(unittest.TestCase):
         finally:
             connection.close()
 
+class VideoHTTPTests(VideoHTTPFixture):
     def test_off_by_default(self):
         with self.running(enabled=False):
             self.assertEqual(json.loads(self.request("/api/video-info")[2]), {"available": False})
@@ -123,7 +131,9 @@ class VideoHTTPTests(unittest.TestCase):
             status, _, body = self.request("/api/video-info")
             self.assertEqual(status, 200)
             self.assertEqual(json.loads(body), {"available": True, "url": "/api/video",
-                                               "download_url": "/api/video?download=1"})
+                                               "download_url": "/api/video?download=1",
+                                               "versions": [{"id": "demo", "title": "Interface demo",
+                                                             "url": "/api/video", "download_url": "/api/video?download=1"}]})
             self.assertNotIn(self.video.name.encode(), body)
             self.assertNotIn(str(self.root).encode(), body)
 
@@ -325,7 +335,8 @@ class VideoHTTPTests(unittest.TestCase):
                 if selection is not None:
                     args.extend(["--video-file", selection])
                 self.assertEqual(main(args), 0)
-                factory.assert_called_once_with(str(self.workspace), 8787, require_frontend=True, video_file=selection)
+                factory.assert_called_once_with(str(self.workspace), 8787, require_frontend=True,
+                                                video_file=selection, rendered_video_file=None)
 
     def test_cli_missing_video_fails_startup_without_private_error(self):
         output, errors = io.StringIO(), io.StringIO()

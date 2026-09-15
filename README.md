@@ -2,12 +2,14 @@
 
 CT Education Skill is a local educational chest CT application and coding agent skill. **v0.1.0 is usable:** its CPU heuristic pipeline generates limited candidate masks and 3D surfaces, alongside native-grid CT slice views in an interactive local web viewer. These are not validated segmentation models.
 
+The current branch also implements an offline 36-second Blender film and optional two-video playback. The existing browser demonstration remains separate and available. See [film design](docs/video_design.md) and [bounded verification](docs/test.md); implementation and functional checks are not clinical or full aesthetic certification.
+
 ## Important Disclaimers
 
 - Educational and technical exploration only, not medical diagnosis, clinical advice, triage, or treatment planning.
 - Not a clinically validated viewer. Candidate masks use intensity thresholds and region growing, not trained models or calibrated probabilities.
 - No guarantee of complete vasculature; artery-vein classification is not implemented.
-- Reviewed labelmap import, arbitrary oblique clipping, and anatomical oblique resampling are not implemented. Browser rendering completion does not establish high-fidelity masks or anatomical accuracy.
+- Reviewed labelmap import, precise nodule-mask review, arbitrary oblique clipping, and anatomical oblique resampling are not implemented. Rendering completion does not establish high-fidelity masks or anatomical accuracy.
 - The CPU pipeline needs no GPU or model downloads. The web viewer requires WebGL.
 
 ## Candidate Layers
@@ -58,6 +60,8 @@ python -m playwright install chromium
 
 An `ffmpeg` executable with `libx264` support must also be available on `PATH` via your system package manager. System and browser dependencies may require platform-specific setup; the render command does not install packages automatically. The built frontend is required.
 
+The separate `render-cinematic` command needs Blender with the supported EEVEE API (locally verified with Blender 5.1), plus `ffmpeg` and `ffprobe`. It does not use Playwright, a browser, or the frontend build.
+
 ## Quickstart
 
 All paths below are fictional. Repository, input, and output must be pairwise disjoint after real-path resolution: none may equal, contain, or sit inside another. The workspace parent must exist, but the workspace itself must not exist.
@@ -105,17 +109,31 @@ ct-edu render-video --workspace /path/to/external/workspace --output /path/to/ex
 
 Output must be a new `.mp4` inside the external workspace. Relative output paths resolve under it; the parent must already exist. Existing files, symlinks, and traversal are rejected; no overwrite or automatic subdirectory creation is supported. Repository, input, and workspace remain pairwise disjoint, while the video belongs inside the workspace. See [video options](skills/ct_education.md#video-rendering) for limits and output details.
 
-### Optional Video Playback
+### Cinematic Film
 
-Workspace MP4 files have no route by default. To enable playback and download of one explicitly chosen file:
+Render the 36-second two-panel film into a new external run directory, not inside the viewer workspace:
 
 ```bash
-ct-edu serve --workspace /path/to/external/workspace --video-file tour.mp4
+ct-edu render-cinematic --workspace /path/to/external/workspace --output /path/to/external/new-cinematic-run --blender /path/to/blender --start 0 --duration 36 --fps 24 --width 1920 --height 1080
 ```
 
-`--video-file` accepts a relative path to an existing regular `.mp4` inside the completed external workspace. Absolute paths, traversal, symlinks, and non-MP4 names are rejected at startup (`E_VIDEO_FILE`). This selects a single file, not all outputs; HTTP requests cannot select another path.
+Literal defaults are `--start 0 --duration 36 --fps 24 --width 1280 --height 720 --samples 16 --budget 600`. The example explicitly requests 1920x1080; the CLI does not default to that resolution. `--budget` limits the Blender subprocess in seconds, not the whole pipeline. A shorter proof must fit within the 36-second timeline. See [all cinematic options](skills/ct_education.md#cinematic-rendering).
 
-The viewer enables "Watch the tour" only when video metadata is available and valid. Clicking it loads the player and attempts playback; closing pauses playback and removes its source. Download and native fullscreen controls remain available. Escape closes the modal even from focused video controls, except during native fullscreen, where the browser handles it. Unavailable video leaves the viewer usable. See the [HTTP contract](docs/rfc.md#local-viewer) and [bounded Chrome verification](docs/test.md#visual-qa-and-regressions). The renderer's internal server leaves video disabled, preventing cyclic playback during capture.
+Both panels share one source-image and plane state in RAS millimeters, mapped to Blender meters without an axis permutation. The staged stack, fast-slow-fast turn, sweeps, and face-on proof at 26-28 seconds are unchanged. At 28-33 seconds, the left keeps true 3D near-top context with existing branches, a faint envelope, translucent source plane, and world-space candidate ring; only the right is a flat native-CT zoom. At 33-36 seconds, the left fades context and locator to leave airway candidates, with a gentle arc and narrower framing, then holds at 35.5-36 seconds. The right CT and metric ruler remain fixed after 30 seconds; the left ruler disappears with its referent plane. Native HU is unchanged, and no capillaries or nodules are invented. A locator is not a segmented lesion.
+
+The revised authorized film completed at 36 seconds, 1920x1080, 24 fps: 864 Blender frames, with unchanged pre-28-second imagery retained, no frame interpolation, and no audio. The maintainer reports full validation and decoding passed. The run contains `film.mp4`, PNGs, textures, state, logs, validation records, and a packed `master.blend`. All are private derivatives; the packed scene contains patient-derived content and must never enter the repository. Rendering does not expose any file to the viewer.
+
+### Optional Video Playback
+
+Workspace MP4 files have no route by default. To enable playback and download of two explicitly chosen files:
+
+```bash
+ct-edu serve --workspace /path/to/external/workspace --video-file demo.mp4 --rendered-video-file film.mp4
+```
+
+Each flag accepts a relative path to an existing regular `.mp4` inside the completed external workspace. Either flag can be used alone. Absolute paths, traversal, symlinks, and non-MP4 names are rejected at startup (`E_VIDEO_FILE`). HTTP requests cannot select another path. The cinematic output directory is deliberately disjoint: only after explicit approval may the caller copy the final MP4 into the viewer workspace. No automatic copying, export-directory serving, or exposure of intermediate assets is provided.
+
+The viewer enables "Watch the tour" only when video metadata is available and valid. Clicking opens Guided walkthrough, where "Interface demo" and "Rendered film" select the configured versions. The demo is the default when present; rendered-only configuration selects the film. No MP4 is requested before the click. Switching pauses and resets the old source, reloads the player, and updates the direct-play and download links; a paused video stays paused, while a user switch from active playback attempts to play the new version. Closing pauses and removes the source and links. Native fullscreen and Escape behavior remain available. Unavailable video leaves the viewer usable. See the [HTTP contract](docs/rfc.md#local-viewer) and [bounded Chrome verification](docs/test.md#visual-qa-and-regressions). The browser renderer's internal server leaves both videos disabled, preventing cyclic playback during capture.
 
 ## Troubleshooting
 
@@ -131,13 +149,16 @@ The CLI emits fixed error codes with exit code 2 on failure, 0 on success, and 1
 | `E_ANNOTATIONS` | Check allowed keys, numeric types, radius, unique IDs, and in-bounds RAS positions. |
 | `E_FRONTEND_NOT_BUILT` | Run `npm --prefix frontend ci` and `npm --prefix frontend run build`. |
 | `E_PIXEL_DECODE` | Check the transfer syntax and installed decoder locally; do not share private tracebacks. |
-| `E_VIDEO_FILE` | Select an existing regular `.mp4` with a workspace-relative path; no absolute paths, traversal, or symlinks. Omit `--video-file` to disable playback. |
+| `E_VIDEO_FILE` | Select existing regular `.mp4` files with workspace-relative paths; no absolute paths, traversal, or symlinks. Omit both video flags to disable playback. |
 | `E_VIDEO_DEPENDENCY_FFMPEG` | Install `ffmpeg` with `libx264` support on `PATH`. |
 | `E_VIDEO_DEPENDENCY_PLAYWRIGHT` | Install `'.[video]'` in the activated environment. |
 | `E_VIDEO_BROWSER` | Run `python -m playwright install chromium`; check platform browser dependencies and headless execution permissions. |
 | `E_VIDEO_OUTPUT`, `E_VIDEO_OUTPUT_EXISTS` | Choose a new `.mp4` under the workspace with an existing parent. |
 | `E_VIDEO_DURATION`, `E_VIDEO_FPS`, `E_VIDEO_DIMENSIONS` | Check the documented video option limits. |
 | `E_VIDEO_ASSETS`, `E_VIDEO_ENCODER`, `E_VIDEO_RENDER` | Check complete workspace assets, browser loading, and ffmpeg encoding locally. Staging and destination must support same-filesystem hard-link publication. |
+| `E_CINEMATIC_OPTIONS`, `E_CINEMATIC_OUTPUT` | Check the 36-second timeline and option limits; choose a new disjoint external run directory with an existing parent. |
+| `E_CINEMATIC_DEPENDENCY`, `E_CINEMATIC_RENDER` | Check Blender, ffmpeg/ffprobe, and the Blender time budget locally; retain private failure logs externally. |
+| `E_CINEMATIC_SHEARED_GRID`, `E_CINEMATIC_FACE_MATCH`, `E_CINEMATIC_FRAMES`, `E_CINEMATIC_VALIDATION` | Do not bypass geometry or output validation; investigate privately and preserve the failed run. |
 
 ## Privacy and Security
 
@@ -145,9 +166,9 @@ Input is read-only to the tool; input content symlinks are rejected. All runtime
 
 The default is local-only: no study uploads. A GPT review is allowed only with explicit per-case user approval of the material, purpose, and destination. General permission to build, test, improve, or release does not authorize uploads; agents cannot infer or self-grant permission. If any part of that authorization is unspecified, stop before transmitting. This exception does not authorize other providers or public disclosure. Raw patient data, private derivatives, identifiers, paths, and case facts never belong in public repositories/history, PRs, issues, docs, CI, logs, or assets. This documentation is not case-upload authorization, and the application has no upload route.
 
-The server binds only to `127.0.0.1`, checks Host and Origin, and uses `Cache-Control: no-store`. It serves generic frontend assets and allowlisted APIs, not raw volume files, provenance, or directories. Only an explicitly selected `--video-file` MP4 gains playback/download routes. Container metadata stripping is not anonymization, and loopback controls are not user authentication.
+The server binds only to `127.0.0.1`, checks Host and Origin, and uses `Cache-Control: no-store`. It serves generic frontend assets and allowlisted APIs, not raw volume files, provenance, or directories. Only explicitly selected `--video-file` and `--rendered-video-file` MP4s gain playback/download routes. Container metadata stripping is not anonymization, and loopback controls are not user authentication.
 
-Static workspace serving, public tunnels, and public hosting remain prohibited. User-authorized private access through caller-managed authenticated routing may include the chosen MP4, without adding routes for other output files. A local reverse proxy must forward `Range` and preserve `Cache-Control: no-store`; deployment configuration stays private. There is no runtime CDN, telemetry, or cloud tour service.
+Static workspace serving, public tunnels, and public hosting remain prohibited. User-authorized private access uses one application server behind caller-managed authenticated routing and may include the selected MP4s, without adding routes for other output files. A local reverse proxy must forward `Range` and preserve `Cache-Control: no-store`; deployment configuration stays private. There is no runtime CDN, telemetry, or cloud tour service.
 
 ## Agent Skill Integration
 

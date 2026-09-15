@@ -56,9 +56,7 @@ import {
 } from "./ui.js";
 import { validateManifest, validateMesh } from "./validate.js";
 import {
-  VIDEO_DOWNLOAD_NAME,
-  VIDEO_DOWNLOAD_PATH,
-  VIDEO_PLAY_PATH,
+  VIDEO_VERSIONS,
   applyVideoInfo,
   canOpenVideo,
   closeVideo,
@@ -66,6 +64,8 @@ import {
   isMediaFullscreen,
   openVideo,
   routeVideoEscape,
+  selectVideo,
+  syncVideoElement,
 } from "./video.js";
 
 const api = createApi("");
@@ -320,19 +320,10 @@ function onOpacity(id, opacity) {
   if (scene) scene.setLayerAppearance(id, { opacity: state.layers.find((item) => item.id === id).opacity });
 }
 
-function releaseVideoElement() {
-  const video = refs && refs.video;
-  if (!video) return;
-  video.pause();
-  video.removeAttribute("src");
-  video.load();
-}
-
 function shutTourVideo() {
   videoState = closeVideo(videoState);
   videoMessage = "";
-  releaseVideoElement();
-  if (refs && refs["video-download"]) refs["video-download"].removeAttribute("href");
+  syncVideoElement(refs && refs.video, videoState);
   refreshVideoUi();
   if (videoFocus && typeof videoFocus.focus === "function") videoFocus.focus();
   videoFocus = null;
@@ -343,13 +334,20 @@ function openTourVideo() {
   videoFocus = document.activeElement;
   videoState = openVideo(videoState);
   videoMessage = copy.video.loading;
-  refs.video.setAttribute("src", VIDEO_PLAY_PATH);
-  refs["video-download"].href = VIDEO_DOWNLOAD_PATH;
-  refs["video-download"].setAttribute("download", VIDEO_DOWNLOAD_NAME);
+  syncVideoElement(refs.video, videoState, { play: true });
   refreshVideoUi();
-  const play = refs.video.play();
-  if (play && typeof play.catch === "function") play.catch(() => {});
   refs["video-dialog"].focus();
+}
+
+function switchTourVideo(id, userGesture) {
+  if (!videoState.open) return;
+  const next = selectVideo(videoState, id);
+  if (next === videoState) return;
+  const play = userGesture && !refs.video.paused && !refs.video.ended;
+  videoState = next;
+  videoMessage = copy.video.loading;
+  syncVideoElement(refs.video, videoState, { play });
+  refreshVideoUi();
 }
 
 async function probeVideo() {
@@ -438,6 +436,9 @@ function wire() {
   refs["video-close"].addEventListener("click", () => {
     shutTourVideo();
   });
+  for (const version of VIDEO_VERSIONS) {
+    refs[`video-${version.id}`].addEventListener("click", (event) => switchTourVideo(version.id, event.isTrusted));
+  }
   refs["video-backdrop"].addEventListener("click", (event) => {
     if (event.target === refs["video-backdrop"]) shutTourVideo();
   });
