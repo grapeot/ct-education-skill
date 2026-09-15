@@ -47,6 +47,9 @@ def hygiene_findings(root):
             if path.is_symlink():
                 findings.add("symlink")
                 continue
+            if path == root / ".git":
+                # A linked worktree uses a metadata file instead of a .git directory.
+                continue
             if name.lower() == "dicomdir" or any(
                 name.lower().endswith("." + suffix) for suffix in SUFFIXES
             ):
@@ -86,6 +89,12 @@ class ScaffoldTests(unittest.TestCase):
 
     def test_public_file_hygiene(self):
         self.assertEqual(hygiene_findings(ROOT), set())
+
+    def test_linked_worktree_metadata_is_not_public_content(self):
+        with self.external_scratch() as directory:
+            root = Path(directory)
+            (root / ".git").write_text("gitdir: /path/to/repository/.git/worktrees/example\n")
+            self.assertEqual(hygiene_findings(root), set())
 
     def test_ignore_declarations(self):
         rules = (ROOT / ".gitignore").read_text().splitlines()

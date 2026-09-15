@@ -10,6 +10,14 @@ The maintainer confirms [PR1](https://github.com/grapeot/ct-education-skill/pull
 
 ## Changelog
 
+### 2026-09-14 (isolated visual preview)
+
+- Added a preview-only style selector to audition five educational themes: Clinical, Atlas, Blueprint, Aurora, and Studio. Following user selection, Aurora is now the default and all anatomy layers start visible at their existing opacity. Old preview preferences do not override the selected default; production integration remains separate.
+- Selection follow-up: 47 frontend tests and the build passed. Local Chrome confirmed Aurora startup, all anatomy layers enabled, and no page errors; desktop/mobile screenshots remain private.
+- Switching styles preserves active slice position and viewer orientation without resetting state. Only an allowlisted theme preference is stored. The themes vary typography, control treatment, density, panel structure, and scene background without changing native CT pixels or anatomy colors.
+- Verified 45 frontend tests and the production build. All 89 Python tests passed with encoder smoke using a harness that excludes the worktree Git pointer from file hygiene; the unmodified scanner flags that pointer as an unexpected file. No backend or test-scanner changes were made.
+- Local Chrome checks covered desktop and mobile layouts, same-page state and pixel preservation, three source planes, six tours, native-video Escape and source cleanup, keyboard selection, denied storage, and reduced motion. Private screenshots remain outside the repository. These checks do not certify medical accuracy, iPhone Safari, or accessibility conformance.
+
 ### 2026-09-14 (final media validation and documentation)
 
 - Recorded the maintainer's ASCII separator fix and capture-phase Escape handling for focused native video controls, preserving browser Escape behavior during native fullscreen. Independently reran all 89 Python tests with encoder smoke and 42 frontend tests; all passed with zero skips.
@@ -88,6 +96,7 @@ The coordinating maintainer confirms active protection on `master`: PRs required
 
 ## Lessons Learned
 
+- A visual selector must preserve the working surface, not just its state: repaint immediately after canvas resize, and avoid ancestor overflow rules that disable a sticky mobile selector.
 - Native and reduced-grid affines differ: source HU and labels have distinct shapes, strides, and spatial transforms. Array indices alone do not establish alignment.
 - Manifest-last publication matters: failure tests include partial destination publication without a completed manifest. An incomplete workspace is not a usable build; keep it separate from successful runs.
 - Scaffold checks cannot establish runtime geometry or visual quality. Backend synthetic and frontend logic tests add bounded evidence, not anatomical or clinical validation.

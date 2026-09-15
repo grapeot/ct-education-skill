@@ -32,9 +32,7 @@ export function defaultLayerOpacity(id) {
   return 0.62;
 }
 
-export function defaultLayerVisible(id) {
-  const key = String(id || "").toLowerCase();
-  if (key.includes("vessel") || key.includes("bone")) return false;
+export function defaultLayerVisible() {
   return true;
 }
 

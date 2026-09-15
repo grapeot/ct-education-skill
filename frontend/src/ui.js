@@ -59,7 +59,7 @@ export function mountApp(root) {
       <header class="top">
         <div class="brand">
           <p class="kicker">${escapeHtml(copy.appKicker)}</p>
-          <h1>${escapeHtml(copy.appTitle)}</h1>
+          <p class="app-title">${escapeHtml(copy.appTitle)}</p>
         </div>
         <div class="header-actions">
           <button type="button" class="btn-watch" data-ref="watch-tour" disabled aria-label="${escapeHtml(copy.a11y.watchTourChecking)}">${escapeHtml(copy.video.checking)}</button>
