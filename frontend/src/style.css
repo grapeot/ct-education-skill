@@ -766,8 +766,8 @@ input:focus-visible,
   width: min(920px, 100%);
   max-height: min(90dvh, calc(100dvh - 48px));
   min-height: 0;
-  overflow: hidden;
   background: #12182a;
+  overflow: auto;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   padding: 16px 18px 18px;
@@ -778,6 +778,7 @@ input:focus-visible,
 }
 
 .video-head,
+.video-versions,
 .video-body,
 .video-status,
 .video-foot {
@@ -820,6 +821,28 @@ input:focus-visible,
   color: var(--champagne);
   font-size: 13px;
   width: max-content;
+}
+
+.video-versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.video-versions button {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+
+.video-versions button[aria-pressed="true"] {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.video-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
 }
 
 @media (max-width: 900px) {

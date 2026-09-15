@@ -4,17 +4,17 @@
 
 Make a finished offline film with a Blender-rendered 3D scene on the left and the corresponding source CT image on the right. Start with the image, build spatial understanding, then return to the image as evidence. The existing browser `render-video` remains a separate demonstration product, not the production renderer.
 
-This is the updated design-first checkpoint: the 36-second timing and motion refinements below are implementation-pending. `render-cinematic` is proposed here; implementation and measured results are recorded separately in [working.md](working.md). This document describes the target film, not a claim that every shot has shipped. The coordinating maintainer must privacy-review and commit/PR this design before implementation.
+The 36-second timing and motion refinements are implemented on the current branch. The design-first gate was completed in merged PR5 after privacy review and CI; the user then authorized film rendering and code publication. The combined implementation PR is pending with the coordinating maintainer. This document preserves director intent; [working.md](working.md) and [test.md](test.md) record bounded results, not certification of every aesthetic target or clinical accuracy.
 
 The acceptance question: can a viewer explain how the visible plane relates to the source image, distinguish display surfaces from image evidence, and understand size without mistaking a locator for a segmented finding?
 
-Execution gates, in order:
+The design specifies these production gates, in order; retain them for future revisions:
 1. This design and scientific contract.
 2. Representative hero frames for shading, orientation, clipping, and scale.
 3. A 4-7.5 second motion proof at final cadence for easing, rhythm, and synchronization.
 4. A full example 36-second film only if the measured render budget permits.
 
-First-screen recap: the film is independent of the browser demonstration. Both pictures must describe the same place at the same time. Prove that relationship in a short render before producing the long film.
+The revised authorized film is 36 seconds at 1920x1080 and 24 fps, with 864 Blender frames, no temporal interpolation, and no audio. Imagery before 28 seconds is unchanged; the final shots now preserve left-side 3D depth and end on airway candidates instead of returning to overview. The maintainer reports full validation/decode passed. The browser demo remains separate; earlier functional Chrome and image-pair checks retain their bounded scope, not continuous human aesthetic acceptance of this revision.
 
 ## 2. Sequence Rationale
 
@@ -46,9 +46,9 @@ Persist plane origin/basis/normal, native source affine, label affine, selected 
 
 The identical windowed HU image and mapping feed both the exposed left plane and right panel. The right image is not a separately selected approximation. Source HU and label arrays remain read-only.
 
-An exposed cut face uses HU texture clipped to a body footprint. A colored mesh boundary is not a CT interior. Dynamic shader clipping is preferred to repeated heavy Boolean evaluation; it may leave uncapped mesh boundaries, with the HU plane supplying image evidence rather than fabricated tissue.
+An exposed cut face uses HU texture clipped to a body footprint. A colored mesh boundary is not a CT interior. The implementation uses dynamic shader clipping rather than repeated heavy Boolean evaluation; it may leave uncapped mesh boundaries, with the HU plane supplying image evidence rather than fabricated tissue.
 
-The body footprint is a display mask, not a reviewed body segmentation. It must not erase peripheral image evidence without disclosure. The right panel may retain the full source image background while sharing the identical underlying HU image.
+The body footprint is a display mask, not a reviewed body segmentation. Both panels use the same footprint mask, so peripheral background can be hidden in both; the left plane has additional translucency during depth inspection and fades out in the ending. This is a disclosed display treatment, not full-image or reviewed-mask evidence. Native HU remains unchanged.
 
 ### Face-On Proof
 
@@ -56,7 +56,7 @@ Derive the camera from the actual screen-right and screen-up basis. Looking down
 
 Use an asymmetric synthetic phantom to verify handedness. For tilted or sheared data, either explicitly support the full mapping or reject the proof mode; do not silently call a source-grid section an anatomical world-axis reformat.
 
-Return to perspective only after the matching hold. Do not interpolate projection modes as if their scales were interchangeable.
+After the matching hold, the final shots use tilted orthographic 3D context rather than another face-on image match. Do not equate orthographic projection with a flat scene or image parity.
 
 ## 4. Simultaneous Millimeter References
 
@@ -69,6 +69,7 @@ Both panels carry readable physical references during slicing and local inspecti
 - Overview: use an attached plane reference or landmark marker, not a claimed global perspective measurement.
 - Orientation: derive R/L, A/P, S/I or explicit source-axis labels from the screen basis; never paste fixed orientation labels across camera changes.
 - Locator: a sphere or ring marks a candidate location. Its radius is a display parameter, not a measured lesion diameter or a segmented surface.
+- Ending: remove the left ruler when its referent plane has faded; retain the right CT ruler. Do not leave a plane-scale claim floating over isolated airway candidates.
 
 There is currently no reliable candidate mesh in the source contract. Local inspection therefore uses the location marker and real CT close-up. Independently verified segmentation can be added later; no synthetic nodule beauty mesh or smoothing of a tiny candidate substitutes for it.
 
@@ -88,7 +89,7 @@ The requested 100% speed increase means 2x playback speed: the original 72-secon
 
 - Learning: a sampled image volume provides depth; the illustrative stack is not acquisition footage.
 - Left: a small representative subset appears with labeled exaggerated gaps, then returns to true source positions before surfaces are revealed.
-- Right: source images follow the selected stack plane, with a restrained position indicator.
+- Right: the shared selected axial source image stays fixed while representative neighboring planes enter. A changing stack-plane selection and additional position indicator remain director intent, not current behavior.
 - Motion: staged, individually offset plane entries with gentle braking, then a return to rest and surface reveal inside 3.5 seconds. Correct the prior cut's simultaneous stack appearance; do not reveal all planes on the first frame. No stretching of anatomy.
 - Scale: both selected-plane rulers remain physical; exaggerated spacing is explicitly labeled and not presented as anatomical separation.
 
@@ -111,7 +112,7 @@ The requested 100% speed increase means 2x playback speed: the original 72-secon
 ### Shot 5, 14.5-18: Airspaces and Branch Candidates
 
 - Learning: the airspace envelope is not a hollow lung; airway and dense vascular candidates are incomplete heuristic results.
-- Left: muted teal envelope recedes to reveal available branch candidates in distinct restrained colors. Correct the prior cut's overly dark branch emphasis with controlled light, contrast, and envelope opacity so existing branches remain visible; this is a pending design correction, not an implemented result or a reason to invent missing branches.
+- Left: muted teal envelope recedes to reveal available branch candidates in distinct restrained colors. The implementation corrects the prior cut's dark emphasis by fading occluding context and adding controlled branch emission. Bounded checks support this change; it is not a reason to invent missing branches or a certificate of final lighting quality.
 - Right: a corresponding source-grid section in lung window, not a maximum-intensity projection.
 - Motion: a slow inspection arc, with anatomy fixed at rest.
 - Scale: plane-local rulers in both panels; no branch-caliber claims from smoothed meshes.
@@ -132,21 +133,21 @@ The requested 100% speed increase means 2x playback speed: the original 72-secon
 - Motion: clear context and brake into an orthographic face-on match during 24-26 seconds; hold both panels and rulers still during 26-28 seconds to compare asymmetric features.
 - Scale: identical physical crop/framing and ruler length in both panels. This is screen-scale parity, not physical life-size on every display.
 
-### Shot 8, 28-33: Location, Then Local Evidence
+### Shot 8, 28-33: 3D Location and 2D Evidence
 
-- Learning: distinguish the location in whole-volume context from magnified source detail.
-- Left: marker at unchanged patient coordinates; move into orthographic local plane inspection, not a fabricated lesion surface.
-- Right: first the wider image, then the same region cropped around the externally supplied candidate.
-- Motion: wide hold at 28-28.5 seconds, eased coordinated zoom at 28.5-30 seconds, then a stable close-up and ruler-reading hold at 30-33 seconds. No overshoot or extra dwell outside the shot.
-- Scale: both bars update through the zoom; use readable rounded millimeters. Caption: locator only, not a segmented lesion.
+- Learning: distinguish a location in real 3D branch context from magnified 2D source evidence, without repeating the deliberate flat proof at 26-28 seconds.
+- Left: near-top orthographic view tilted 18 degrees from the source face basis, with existing airway/vascular candidates, a faint envelope, and translucent source plane. A world-space ring stays at the supplied candidate coordinates and radius. Bones are hidden; no capillaries or nodule surface are invented.
+- Right: the native axial source image zooms around the supplied candidate; the image, crop, and metric ruler remain fixed from 30 seconds through the end.
+- Motion: wider hold at 28-28.5 seconds, eased right CT zoom and restrained left 3D framing adjustment at 28.5-30 seconds, then a stable reading hold at 30-33 seconds. The left never becomes a duplicate flat CT close-up.
+- Scale: both references remain tied to the source plane, without a screen-scale parity claim for the tilted view. The ring is a locator, not a segmented lesion or measured boundary.
 
-### Shot 9, 33-36: Return to Overview
+### Shot 9, 33-36: Airway Candidates
 
-- Learning: retain the relationship between local evidence and spatial context, with uncertainty intact.
-- Left: return to rest-pose overview and the established principal angle.
-- Right: restore the wider source image at the selected location.
-- Motion: smooth pullback during 33-35 seconds and a settled closing hold during 35-36 seconds, not another orbit.
-- Scale: attached reference on the left and wider image ruler on the right; no global perspective measurement claim.
+- Learning: isolate the available airway candidates while retaining the source image as evidence and keeping uncertainty explicit.
+- Left: fade the source plane, envelope, vascular context, and world-space locator over 33-33.6 seconds, leaving only available airway candidates. Bones remain hidden throughout the shot. Do not restore ribs or invent missing branches.
+- Right: retain the same native CT close-up and metric ruler fixed since 30 seconds; no zoom-out or slice change.
+- Motion: a gentle approximately 21-degree camera arc toward airway-centered framing with 10% field-width narrowing over 33-35.5 seconds, then a settled hold at 35.5-36 seconds. This replaces the former return-to-overview ending.
+- Scale: remove the left ruler at 33.6 seconds with its referent plane; retain the right image-derived metric ruler. Native HU, sampling, and source coordinates remain unchanged.
 
 ### Normalized Orbit Profile
 
@@ -173,18 +174,18 @@ Keep fixed two-panel framing, restrained chapter numbers, generous image area, a
 
 ## 7. Production and Validation
 
-The proposed additive command drives a generic deterministic Blender script. It must emit an external packed `master.blend`, versioned PNG sequence, MP4, per-frame state, benchmark, and validation record. The script plus state is the authoritative motion source; a saved hero scene alone does not encode the whole film.
+The implemented additive command drives a generic deterministic Blender script and emits an external packed `master.blend`, PNG sequence, `film.mp4`, per-frame state, benchmark, and validation record. Each changed run uses a new version directory. The script plus state is the authoritative motion source; the packed initial scene alone does not encode the whole film.
 
 Use [RFC source geometry](rfc.md#source-truth-and-geometry), [external artifacts](rfc.md#external-artifacts), and [privacy boundaries](rfc.md#filesystem-and-privacy). This opt-in offline pipeline must explicitly validate its separate external output root; the browser renderer's existing workspace-contained output rule is unchanged.
 
-The primary target is 24 fps, matching the prior renderer cadence: exactly 864 frames for 36 seconds, with zero-based output indices 0-863 and the end boundary at 864. Shot boundary frame indices are 0, 72, 156, 276, 348, 432, 576, 672, 792, and 864. A separately selected 30 fps variant would require 1080 frames, not a longer cut. Desired delivery is 1920x1080, subject to measured render budget; 1280x720 is an optional preview, not an unannounced final-quality substitution.
+The delivered cadence is 24 fps: exactly 864 frames for 36 seconds, with zero-based output indices 0-863 and the end boundary at 864. Shot boundary frame indices are 0, 72, 156, 276, 348, 432, 576, 672, 792, and 864. A separately selected 30 fps variant would require 1080 frames, not a longer cut. The authorized delivery is 1920x1080. Literal CLI defaults remain 1280x720, 16 samples, and a 600-second Blender subprocess budget; final resolution must be requested explicitly. Default start/duration/fps are 0/36/24, not the historical proof settings.
 
 Start with bounded EEVEE hero renders and a 4-7.5 second low-resolution proof at final cadence. Set a render timeout and estimate total cost from measured frames. Do not launch unattended 4K or long Cycles jobs. Interrupted sequences remain versioned and recoverable; changed settings require a new version.
 
-Implementation must first map the raw 72-second timeline to 36 seconds with `t_raw = 2 * t_output`, halving nominal holds and transitions as well as shot boundaries. Then apply authored, monotone nondecreasing local time warps to the relevant motion tracks inside each fixed shot, with endpoints pinned and explicit plateaus for holds. This is not a second global speed multiplier. Deliberate scan tracks may retain steady timing; whenever a selected plane changes, both panels consume the same resulting state. Retiming changes temporal scheduling, not source geometry, slice sampling rules, or rest coordinates.
+The implementation maps the historical raw 72-second timeline to 36 seconds with `t_raw = 2 * t_output`, halving nominal holds and transitions as well as shot boundaries. Authored local motion tracks then stay inside each fixed shot, with endpoints pinned and explicit plateaus for holds. This is not a second global speed multiplier. Deliberate scan tracks retain steady interiors; whenever a selected plane changes, both panels consume the same resulting state. Retiming changes temporal scheduling, not source geometry, slice sampling rules, or rest coordinates.
 
-The coordinating implementation must test the 36-second duration and boundary frames, monotone warps, angle/velocity continuity, full unwrapped turn, fast-slow-fast contrast, and exact hold intervals. It must also verify staged stack entry, branch visibility after context recedes, stable labels, synchronized source-image pairs, and ruler readability during proof and local detail. These checks and visual results are pending; this document-only update performs no implementation or renders.
+All 27 cinematic unit tests passed in the independent full-suite rerun. Coverage includes the schedule, orbit, holds, stack, branches, and source geometry, plus depth-view state without false image parity, continuous ending fade/narrowing and 35.5-second settling, and fixed right CT evidence. Earlier private image-pair and Chrome checks support the unchanged proof and scoped playback behavior; the revised artifact also passed maintainer-reported full validation/decode. Some ruler-label offsets remain non-blocking polish. These checks do not certify every transition or continuous human aesthetic acceptance.
 
 Validate exact expected frame indices, open every PNG and check dimensions, probe frame rate/duration/codec, and fully decode the MP4 with ffmpeg. Numerical trajectory tests and frame comparisons supplement actual continuous playback; snapshots do not establish motion quality.
 
-Private source paths, coordinates, images, logs, and provenance remain external. Public failures contain fixed codes, not raw exceptions. No frontend, server route, live media selection, deployment, or Git mutation belongs to this workflow. A future web preview must select one allowlisted film rather than expose an output directory.
+Private source paths, coordinates, images, logs, provenance, and the patient-derived packed `.blend` remain external. Public failures contain fixed codes, not raw exceptions. Rendering itself performs no server exposure or deployment. The combined viewer implementation separately supports `serve --video-file demo.mp4 --rendered-video-file film.mp4`, with both files explicitly selected inside the viewer workspace. The cinematic run must remain disjoint; only an explicitly approved copy of its final MP4 may be placed in that workspace. One application server and caller-managed authenticated routing serve fixed routes, never the run directory. Small mobile inline playback and ruler-label offsets are accepted non-blocking P2 polish; fullscreen and direct play remain available. Publication remains with the coordinating maintainer.
