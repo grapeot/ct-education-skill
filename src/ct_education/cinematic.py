@@ -14,6 +14,7 @@ from scipy import ndimage
 
 from .safety import REPO, PipelineError, directory_fd, disjoint, local_file, read_json, write_json
 from .server import validate_manifest
+from .candidate_geometry import extract_candidate
 
 
 SHOT_BOUNDARIES = (0, 3, 6.5, 11.5, 14.5, 18, 24, 28, 33, 36)
@@ -183,22 +184,13 @@ def frame_state(volume, manifest, seconds):
         face, cut = 0.15 + 0.85 * ease((seconds - 24.5) / 1.5), True
         fade = 1 - ease((seconds - 24) / 1)
         visibility.update(lungs=0.22 * fade, bones=0.7 * fade, airways=fade, vessels=0.7 * fade)
-    elif raw_seconds < 66:
-        title, note = 'LOCATION, THEN EVIDENCE', 'Locator only, not a segmented lesion. Magnification does not add source resolution.'
-        zoom = 1 + 5 * ease((seconds - 28.5) / 1.5)
-        depth_view, face = True, 0.0
-        inspection_scale = 1 - 0.08 * ease((seconds - 28.5) / 1.5)
-        plane_opacity, branch_emphasis = 0.16, 1.0
-        visibility.update(lungs=0.025, airways=1, vessels=0.45)
     else:
-        title, note = 'AIRWAY CANDIDATES', 'Educational visualization. Candidate structures are unverified; not for diagnosis.'
-        depth_view, face, zoom, branch_emphasis = True, 0.0, 6.0, 1.0
-        outro_progress = ease((seconds - 33) / 2.5)
-        inspection_scale = 0.92 * (1 - 0.1 * outro_progress)
-        marker_opacity = 1 - ease((seconds - 33) / 0.6)
-        plane_opacity = 0.16 * marker_opacity
-        show_plane = plane_opacity > 0
-        visibility.update(lungs=0.025 * marker_opacity, airways=1, vessels=0.45 * marker_opacity)
+        title, note = 'N1 / LOCAL SOURCE EVIDENCE', 'Localized region; boundary unverified. Same N1 location in both views.'
+        depth_view, face, show_plane, plane_opacity = True, 0.0, False, 0.0
+        inspection_scale = 1 - 0.6 * ease((seconds - 28) / 2)
+        outro_progress = ease((seconds - 30) / 5.5)
+        full_width_mm = shape[2] * np.linalg.norm(np.asarray(manifest['affine_ras'])[:3, 0])
+        zoom = max(1.0, float(full_width_mm / (100 * inspection_scale)))
     ai = {'axial': 0, 'coronal': 1, 'sagittal': 2}[axis]
     index = round((shape[ai] - 1) * fraction)
     candidate = manifest['annotations'][0] if manifest['annotations'] else None
@@ -211,8 +203,9 @@ def frame_state(volume, manifest, seconds):
         x = int(np.clip(round(ijk[0] - cw / 2), 0, width - cw))
         y = int(np.clip(round(ijk[1] - ch / 2), 0, height - ch))
         crop = (x, y, x + cw, y + ch)
-    elif 28 <= seconds < 33:
+    elif 28 <= seconds:
         title, note = 'SOURCE DETAIL', 'No candidate supplied. Inspecting source image only.'
+        depth_view, face, show_plane, plane_opacity = False, 1.0, True, 1.0
     rgba, plane = source_plane(volume, manifest['affine_ras'], axis, index, crop, window)
     return rgba, dict(plane=plane, time=seconds, raw_time=raw_seconds, shot=shot + 1,
                       title=title, note=note, visibility=visibility, zoom=zoom,
@@ -220,9 +213,52 @@ def frame_state(volume, manifest, seconds):
                       stack_entries=stack_entries, stack_opacity=stack_opacity, stack_framing=stack_framing,
                       plane_opacity=plane_opacity, branch_emphasis=branch_emphasis, camera_elevation=camera_elevation,
                       depth_view=depth_view, outro_progress=outro_progress, inspection_scale=inspection_scale,
-                      marker_opacity=marker_opacity, left_ruler_visible=seconds < 33.6,
+                      marker_opacity=marker_opacity, left_ruler_visible=True,
                       locator=candidate if 28 <= seconds <= 36 else None,
                       display_offsets_ras={}, ruler_mm=nice_mm(plane['size_mm'][0]))
+
+
+def prepare_candidate(output, volume, manifest):
+    """Persist only external candidate evidence and physically mapped local slices."""
+    if not manifest['annotations']:
+        return None
+    annotation = manifest['annotations'][0]
+    result = extract_candidate(volume, manifest['affine_ras'], annotation['position_ras'])
+    folder = output / 'candidate'
+    folder.mkdir(mode=0o700)
+    write_json(output, 'candidate/validation.json', result['report'])
+    np.save(folder / 'mask.npy', result['mask'])
+    np.save(folder / 'roi_hu.npy', result['hu'])
+    for threshold, mask in result['masks'].items():
+        np.save(folder / f'mask_{threshold}.npy', mask)
+    mesh_path = None
+    if result['mesh']:
+        mesh_path = 'candidate/surface.json'
+        write_json(output, mesh_path, result['mesh'])
+    density_path = None
+    if result['density_mesh']:
+        density_path = 'candidate/density_surface.json'
+        write_json(output, density_path, result['density_mesh'])
+    write_json(output, 'candidate/density_display.json', result['density_display'])
+    ijk = (np.linalg.inv(result['affine_ras']) @ np.r_[annotation['position_ras'], 1])[:3]
+    planes = []
+    for axis, component in [('axial', 2), ('coronal', 1), ('sagittal', 0)]:
+        image, plane = source_plane(result['hu'], result['affine_ras'], axis, int(np.floor(ijk[component] + 0.5)))
+        # A local evidence window retains all native pixels, not a body-mask selection.
+        image[:, :, 3] = 255
+        path = f'candidate/{axis}.png'
+        Image.fromarray(image).save(output / path)
+        planes.append(dict(plane=plane, image=path))
+    return dict(status=result['report']['status'], mesh=mesh_path, density_mesh=density_path,
+                density_display=result['density_display'], planes=planes,
+                center_ras=annotation['position_ras'], half_extent_mm=result['report']['half_extent_mm'],
+                locator_half_mm=max(4, annotation['radius_mm'] * 1.5), validation='candidate/validation.json')
+
+
+def candidate_caption(geometry):
+    if geometry and geometry['density_mesh']:
+        return f"CT density surface at {geometry['density_display']['threshold_hu']:g} HU; not a verified nodule boundary."
+    return 'Localized region; boundary unverified. Same N1 location in both views.'
 
 
 def render_cinematic(workspace, output, *, blender='blender', duration=36, start=0,
@@ -277,7 +313,9 @@ def render_cinematic(workspace, output, *, blender='blender', duration=36, start
         rgba, plane = source_plane(volume, manifest['affine_ras'], 'axial', round(index))
         Image.fromarray(rgba).save(output / 'textures' / f'stack_{i}.png')
         stack_planes.append(dict(plane=plane, image=f'textures/stack_{i}.png'))
-    config = dict(schema=3, center_ras=center.tolist(), bounds_ras=manifest['bounds_ras'], layers=layers, frames=states,
+    candidate_geometry = prepare_candidate(output, volume, manifest)
+    config = dict(schema=5, center_ras=center.tolist(), bounds_ras=manifest['bounds_ras'], layers=layers, frames=states,
+                  candidate_geometry=candidate_geometry,
                   label_grid=read_json(workspace, 'labels-grid.json'), stack=stack_planes,
                   colors=dict(bones=[0.66, 0.60, 0.48, 1], lungs=[0.08, 0.32, 0.34, 1],
                               airways=[0.34, 0.69, 0.70, 1], vessels=[0.53, 0.23, 0.14, 1]),
@@ -405,14 +443,36 @@ def compose_frames(output, config):
             right_point = (rx + rw / 2 + np.dot(delta, plane['u']) * scale_x,
                            ry + rh / 2 - np.dot(delta, plane['v']) * scale_y)
             point = projection['locator_pixels']
-            marker_points = [right_point] if state['depth_view'] else [(24 + point[0], 92 + point[1]), right_point]
-            for px, py in marker_points:
-                draw.ellipse((px - 10, py - 10, px + 10, py + 10), outline='#f0bc66', width=2)
-                draw.line((px - 16, py, px - 7, py), fill='#f0bc66', width=2)
-                draw.line((px + 7, py, px + 16, py), fill='#f0bc66', width=2)
+            geometry = config['candidate_geometry']
+            half_mm = geometry['locator_half_mm']
+            markers = [(24 + point[0], 92 + point[1], half_mm * pw / (projection['field_width_m'] * 1000), 24),
+                       (*right_point, half_mm * scale_x, width // 2 + 12)]
+            for px, py, radius, panel_x in markers:
+                radius = max(24, radius + 8)
+                if not (panel_x <= px <= panel_x + pw and 92 <= py <= 92 + ph):
+                    raise PipelineError('E_CINEMATIC_LOCATOR_OFFSCREEN')
+                arm = min(24, radius * 0.3)
+                for sx in (-1, 1):
+                    for sy in (-1, 1):
+                        x, y = px + sx * radius, py + sy * radius
+                        line = [(x - sx * arm, y), (x, y), (x, y - sy * arm)]
+                        draw.line(line, fill='#080b12', width=8)
+                        draw.line(line, fill='#dab2ff', width=4)
+                label = 'N1 / nodule candidate'
+                label_width = draw.textlength(label, font=font)
+                lx = max(panel_x + 8, min(px + radius + 24, panel_x + pw - label_width - 12))
+                ly = max(100, py - radius - font.size - 32)
+                line = [(lx + 8, ly + font.size + 6), (px + radius + 12, py - radius - 12), (px + radius, py - radius)]
+                draw.line(line, fill='#080b12', width=6)
+                draw.line(line, fill='#e8d8ff', width=2)
+                draw.rectangle((lx - 5, ly - 4, lx + label_width + 5, ly + font.size + 5), fill='#0b111b')
+                draw.text((lx, ly), label, font=font, fill='#dab2ff')
         draw.text((width // 2 + 12, height - 79), f"{plane['axis'].upper()} / {plane['window'][0]:g} : {plane['window'][1]:g} HU window", font=font, fill='#a6b5c2')
         # Wrap captions based on measured width, rather than allowing small-frame overflow.
-        words, lines, line = state['note'].split(), [], ''
+        note = state['note']
+        if state['depth_view'] and config['candidate_geometry']:
+            note = candidate_caption(config['candidate_geometry'])
+        words, lines, line = note.split(), [], ''
         for word in words:
             candidate = (line + ' ' + word).strip()
             if draw.textlength(candidate, font=font) > width - 48 and line:

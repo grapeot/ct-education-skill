@@ -191,14 +191,13 @@ class CinematicTests(unittest.TestCase):
 
     def test_local_and_closing_holds_have_no_geometry_or_zoom_drift(self):
         self.manifest['annotations'] = [dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)]
-        for start, end in [(28, 28.49), (30, 32.99), (35.5, 36)]:
+        for start, end in [(35.5, 36)]:
             a = frame_state(self.volume, self.manifest, start)[1]
             b = frame_state(self.volume, self.manifest, end)[1]
             for key in ('plane', 'zoom', 'face', 'visibility', 'ruler_mm', 'locator',
                         'outro_progress', 'inspection_scale', 'plane_opacity'):
                 self.assertEqual(a[key], b[key])
-        self.assertEqual(frame_state(self.volume, self.manifest, 30)[1]['zoom'], 6)
-        self.assertEqual(frame_state(self.volume, self.manifest, 35)[1]['zoom'], 6)
+        self.assertEqual(frame_state(self.volume, self.manifest, 30)[1]['zoom'], frame_state(self.volume, self.manifest, 35)[1]['zoom'])
 
     def test_branch_emphasis_removes_occluding_bone_and_dims_envelope(self):
         state = frame_state(self.volume, self.manifest, 16)[1]
@@ -218,13 +217,14 @@ class CinematicTests(unittest.TestCase):
     def test_opening_stays_on_source_face_side_and_ending_has_no_ribs_or_plane(self):
         self.assertLess(frame_state(self.volume, self.manifest, 2.75)[1]['camera_elevation'], 0)
         self.assertAlmostEqual(frame_state(self.volume, self.manifest, 6.5)[1]['camera_elevation'], 0.35)
+        self.manifest['annotations'] = [dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)]
         state = frame_state(self.volume, self.manifest, 34)[1]
-        self.assertEqual(state['zoom'], 6)
         self.assertTrue(state['depth_view'])
-        self.assertEqual(state['visibility'], dict(bones=0, lungs=0, airways=1, vessels=0))
+        self.assertEqual(state['visibility'], dict(bones=0, lungs=0, airways=0, vessels=0))
         self.assertEqual(state['plane_opacity'], 0)
         self.assertFalse(state['show_plane'])
-        self.assertFalse(state['left_ruler_visible'])
+        self.assertTrue(state['left_ruler_visible'])
+        self.assertIsNotNone(state['locator'])
 
     def test_candidate_view_has_real_depth_without_claiming_image_parity(self):
         self.manifest['annotations'] = [dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)]
@@ -235,7 +235,7 @@ class CinematicTests(unittest.TestCase):
             self.assertEqual(state['face'], 0)
             self.assertFalse(state['clip'])
             self.assertEqual(state['visibility']['bones'], 0)
-            self.assertEqual(state['visibility']['airways'], 1)
+            self.assertEqual(state['visibility']['airways'], 0)
             self.assertLess(state['plane_opacity'], 0.2)
             self.assertEqual(state['locator'], self.manifest['annotations'][0])
             self.assertTrue(state['left_ruler_visible'])
@@ -245,9 +245,10 @@ class CinematicTests(unittest.TestCase):
         self.assertFalse(proof['depth_view'])
 
     def test_ending_fade_and_camera_tracks_are_continuous_monotone_and_settle(self):
+        self.manifest['annotations'] = [dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)]
         a = frame_state(self.volume, self.manifest, 33 - 1e-6)[1]
         b = frame_state(self.volume, self.manifest, 33)[1]
-        for key in ('plane', 'inspection_scale', 'plane_opacity', 'visibility', 'outro_progress'):
+        for key in ('plane', 'inspection_scale', 'plane_opacity', 'visibility'):
             self.assertEqual(a[key], b[key])
         states = [frame_state(self.volume, self.manifest, t)[1] for t in np.linspace(33, 36, 73)]
         progress = [s['outro_progress'] for s in states]
@@ -256,12 +257,13 @@ class CinematicTests(unittest.TestCase):
         self.assertEqual(progress, sorted(progress))
         self.assertEqual(scales, sorted(scales, reverse=True))
         self.assertEqual(opacity, sorted(opacity, reverse=True))
-        self.assertAlmostEqual(scales[-1] / scales[0], 0.9)
+        self.assertAlmostEqual(scales[-1] / scales[0], 1)
         for t in (35.5, 35.9, 36):
             state = frame_state(self.volume, self.manifest, t)[1]
             self.assertEqual(state['outro_progress'], 1)
-            self.assertEqual(state['marker_opacity'], 0)
-            self.assertEqual(state['visibility']['airways'], 1)
+            self.assertEqual(state['marker_opacity'], 1)
+            self.assertEqual(state['visibility']['airways'], 0)
+            self.assertIsNotNone(state['locator'])
 
     def test_right_ct_stays_fixed_through_airway_ending(self):
         self.manifest['annotations'] = [dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)]
@@ -271,3 +273,17 @@ class CinematicTests(unittest.TestCase):
             np.testing.assert_array_equal(pixels, image)
             self.assertEqual(state['plane'], reference['plane'])
             self.assertEqual(state['ruler_mm'], reference['ruler_mm'])
+
+    def test_n1_persists_through_all_local_frames_and_orbit_has_final_hold(self):
+        marker = dict(position_ras=[-2.1, -2.7, 4], radius_mm=1)
+        self.manifest['annotations'] = [marker]
+        states = [frame_state(self.volume, self.manifest, i / 24)[1] for i in range(672, 864)]
+        for state in states:
+            self.assertEqual(state['locator'], marker)
+            self.assertEqual(state['marker_opacity'], 1)
+            self.assertTrue(state['left_ruler_visible'])
+            self.assertFalse(any(state['visibility'].values()))
+        self.assertEqual(frame_state(self.volume, self.manifest, 30)[1]['outro_progress'], 0)
+        self.assertTrue(all(s['outro_progress'] == 1 for s in states[-12:]))
+        progress = [s['outro_progress'] for s in states]
+        self.assertEqual(progress, sorted(progress))

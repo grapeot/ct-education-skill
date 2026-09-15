@@ -4,7 +4,7 @@
 
 Make a finished offline film with a Blender-rendered 3D scene on the left and the corresponding source CT image on the right. Start with the image, build spatial understanding, then return to the image as evidence. The existing browser `render-video` remains a separate demonstration product, not the production renderer.
 
-The 36-second timing and motion refinements are implemented on the current branch. The design-first gate was completed in merged PR5 after privacy review and CI; the user then authorized film rendering and code publication. The combined implementation PR is pending with the coordinating maintainer. This document preserves director intent; [working.md](working.md) and [test.md](test.md) record bounded results, not certification of every aesthetic target or clinical accuracy.
+The 36-second timing and motion refinements are implemented. PR4, PR5, and PR6 are merged per coordinating maintainer confirmation (observed merge `c892613`). The new PR for `feat/visible-nodule-focus` has not been created; its GLM privacy gate and all Git operations remain with the coordinating maintainer. This document preserves director intent; [working.md](working.md) and [test.md](test.md) record bounded results, not certification of every aesthetic target or clinical accuracy.
 
 The acceptance question: can a viewer explain how the visible plane relates to the source image, distinguish display surfaces from image evidence, and understand size without mistaking a locator for a segmented finding?
 
@@ -14,7 +14,7 @@ The design specifies these production gates, in order; retain them for future re
 3. A 4-7.5 second motion proof at final cadence for easing, rhythm, and synchronization.
 4. A full example 36-second film only if the measured render budget permits.
 
-The revised authorized film is 36 seconds at 1920x1080 and 24 fps, with 864 Blender frames, no temporal interpolation, and no audio. Imagery before 28 seconds is unchanged; the final shots now preserve left-side 3D depth and end on airway candidates instead of returning to overview. The maintainer reports full validation/decode passed. The browser demo remains separate; earlier functional Chrome and image-pair checks retain their bounded scope, not continuous human aesthetic acceptance of this revision.
+The latest authorized film is 36 seconds at 1920x1080 and 24 fps, with 864 Blender frames, no temporal interpolation, and no audio. Imagery before 28 seconds is unchanged; the final shots now keep N1 visible in both panels and orbit its local native-HU ROI on the left, superseding the earlier airway-only ending. The maintainer reports full validation/decode passed. The browser demo remains separate; earlier functional Chrome and image-pair checks retain their bounded scope, not new playback or continuous human aesthetic acceptance of this revision.
 
 ## 2. Sequence Rationale
 
@@ -44,11 +44,11 @@ Both panels are driven by one per-frame state. A plane is not independently recr
 
 Persist plane origin/basis/normal, native source affine, label affine, selected source index, crop, window center/width, physical pixel basis, image identity, and dimensions. Also persist camera basis/projection/framing, visibility, colors, and display offsets.
 
-The identical windowed HU image and mapping feed both the exposed left plane and right panel. The right image is not a separately selected approximation. Source HU and label arrays remain read-only.
+The identical windowed HU image and mapping feed both the main exposed left plane and right panel. The final local view instead adds three physically mapped native-HU ROI planes around the same supplied N1 position. Source HU and label arrays remain read-only; these local source-grid planes are not anatomical world-axis reformats for oblique data.
 
 An exposed cut face uses HU texture clipped to a body footprint. A colored mesh boundary is not a CT interior. The implementation uses dynamic shader clipping rather than repeated heavy Boolean evaluation; it may leave uncapped mesh boundaries, with the HU plane supplying image evidence rather than fabricated tissue.
 
-The body footprint is a display mask, not a reviewed body segmentation. Both panels use the same footprint mask, so peripheral background can be hidden in both; the left plane has additional translucency during depth inspection and fades out in the ending. This is a disclosed display treatment, not full-image or reviewed-mask evidence. Native HU remains unchanged.
+The body footprint is a display mask, not a reviewed body segmentation. The main paired images use the same footprint mask, so peripheral background can be hidden in both. The final left ROI planes retain all native ROI pixels and are faint when an exploratory density surface is displayed; otherwise they supply the fallback evidence with a wire locator. This is a disclosed display treatment, not reviewed-mask evidence. Native HU remains unchanged.
 
 ### Face-On Proof
 
@@ -68,10 +68,12 @@ Both panels carry readable physical references during slicing and local inspecti
 - Zoom: regenerate both references every frame, choosing readable 1/2/5-series millimeter lengths rather than adding excessive decimal precision.
 - Overview: use an attached plane reference or landmark marker, not a claimed global perspective measurement.
 - Orientation: derive R/L, A/P, S/I or explicit source-axis labels from the screen basis; never paste fixed orientation labels across camera changes.
-- Locator: a sphere or ring marks a candidate location. Its radius is a display parameter, not a measured lesion diameter or a segmented surface.
-- Ending: remove the left ruler when its referent plane has faded; retain the right CT ruler. Do not leave a plane-scale claim floating over isolated airway candidates.
+- Locator: exterior N1 brackets, an offset label, and a leader identify the same location in both panels without covering focal pixels. The fallback wire box is also a locator, not a measured lesion diameter or segmented surface. Interactive UI annotation spheres are unchanged by film-only postprocessing.
+- Ending: retain the projected left ruler qualified as "in slice plane" and the right CT ruler. Neither supplies a global 3D scale or nodule measurement.
 
-There is currently no reliable candidate mesh in the source contract. Local inspection therefore uses the location marker and real CT close-up. Independently verified segmentation can be added later; no synthetic nodule beauty mesh or smoothing of a tiny candidate substitutes for it.
+Local inspection may display an exploratory density surface, not a verified candidate boundary. `candidate_geometry.py` selects a seed-connected 26-neighbor component in a bounded native-HU ROI. Threshold sensitivity or lower-threshold edge leakage keeps strict `mesh=None` and `report.status=localized_region_boundary_unverified`. A separate `density_mesh` requires a non-edge selected component passing basic evidence, volume, and elongation checks, then marching cubes at the exact runtime native-HU isovalue, not a binary-mask or sphere surface. Unsafe selected components produce no density mesh and use three native-HU planes with a wire locator. No sphere prior, geometry smoothing, fabricated caps, or brute-force geometry substitutes for source evidence.
+
+Keep `density_display.representation_type=exploratory_isodensity`, `verified_nodule_boundary=false`, and all boundary warnings. The on-frame caption reads "CT density surface at ... HU; not a verified nodule boundary.", with the actual runtime threshold substituted privately. Even passing strict gates yields only `approximate_surface`, not reviewed segmentation or upgraded clinical truth. All ROI arrays, masks, threshold trials, and provenance stay in external private `candidate/` and run records; selected-case parameters, voxel positions, volumes, and ratios never enter public docs.
 
 ## 5. Example Storyboard: 36 Seconds
 
@@ -133,21 +135,18 @@ The requested 100% speed increase means 2x playback speed: the original 72-secon
 - Motion: clear context and brake into an orthographic face-on match during 24-26 seconds; hold both panels and rulers still during 26-28 seconds to compare asymmetric features.
 - Scale: identical physical crop/framing and ruler length in both panels. This is screen-scale parity, not physical life-size on every display.
 
-### Shot 8, 28-33: 3D Location and 2D Evidence
+### Shot 8, 28-33: N1 Location and Source Evidence
 
-- Learning: distinguish a location in real 3D branch context from magnified 2D source evidence, without repeating the deliberate flat proof at 26-28 seconds.
-- Left: near-top orthographic view tilted 18 degrees from the source face basis, with existing airway/vascular candidates, a faint envelope, and translucent source plane. A world-space ring stays at the supplied candidate coordinates and radius. Bones are hidden; no capillaries or nodule surface are invented.
-- Right: the native axial source image zooms around the supplied candidate; the image, crop, and metric ruler remain fixed from 30 seconds through the end.
-- Motion: wider hold at 28-28.5 seconds, eased right CT zoom and restrained left 3D framing adjustment at 28.5-30 seconds, then a stable reading hold at 30-33 seconds. The left never becomes a duplicate flat CT close-up.
-- Scale: both references remain tied to the source plane, without a screen-scale parity claim for the tilted view. The ring is a locator, not a segmented lesion or measured boundary.
+- Learning: keep the candidate identifiable in both views and distinguish local density geometry from a verified nodule boundary. Exterior brackets, offset labels, and leaders persist through 36 seconds, leaving focal pixels clear; no annotation means source-only fallback.
+- Left: physically mapped native-HU ROI with overview anatomy, including airways, hidden and the camera locked to N1. Three local source-grid planes persist, faint if an exploratory density surface is displayed, otherwise native planes with a wire locator. In-plane shear fails closed.
+- Motion: ease local framing and right CT zoom from 28-30 seconds, then begin the 50-degree left camera orbit that ends at 35.5 seconds. The target remains N1, not airway bounds; source geometry does not rotate or deform.
+- Evidence and scale: right native CT crop, pixels, and metric ruler stay fixed after 30 seconds. The left projected slice-plane ruler persists without a screen-scale parity or lesion-size claim.
 
-### Shot 9, 33-36: Airway Candidates
+### Shot 9, 33-36: Persistent N1 Inspection
 
-- Learning: isolate the available airway candidates while retaining the source image as evidence and keeping uncertainty explicit.
-- Left: fade the source plane, envelope, vascular context, and world-space locator over 33-33.6 seconds, leaving only available airway candidates. Bones remain hidden throughout the shot. Do not restore ribs or invent missing branches.
-- Right: retain the same native CT close-up and metric ruler fixed since 30 seconds; no zoom-out or slice change.
-- Motion: a gentle approximately 21-degree camera arc toward airway-centered framing with 10% field-width narrowing over 33-35.5 seconds, then a settled hold at 35.5-36 seconds. This replaces the former return-to-overview ending.
-- Scale: remove the left ruler at 33.6 seconds with its referent plane; retain the right image-derived metric ruler. Native HU, sampling, and source coordinates remain unchanged.
+- Left: continue the N1-locked camera orbit begun at 30 seconds, completing the 50-degree arc at 35.5 seconds and holding through 36 seconds. Keep the local planes and optional exploratory density surface or wire-locator fallback, not isolated airway candidates.
+- Identification: N1 brackets and leaders remain in both panels. A displayed density surface carries the runtime-threshold disclaimer above; fallback retains "Localized region; boundary unverified." No locator fade or fabricated nodule replaces uncertain evidence.
+- Right and scale: retain the native CT close-up and metric ruler fixed since 30 seconds, plus the qualified left slice-plane ruler. No zoom-out, slice change, or source-HU modification.
 
 ### Normalized Orbit Profile
 
@@ -166,7 +165,7 @@ Use monotone cubic Hermite interpolation with these shared knot velocities for C
 
 ## 6. Art Direction
 
-Use charcoal/navy negative space, matte porcelain bone, muted teal airspace, a separate warm branch color, and amber only for the locator. Soft key and rim lights should define existing surfaces without glossy plastic glare. Avoid procedural surface noise that implies invented anatomy.
+Use charcoal/navy negative space, matte porcelain bone, muted teal airspace, and a separate warm branch color. The local N1 sequence uses violet locator brackets and an educational violet density-surface material. Soft key and rim lights should define existing surfaces without glossy plastic glare. Avoid procedural surface noise that implies invented anatomy.
 
 Aim for a focused, refined Blender film through framing, lighting, and motion, not photoreal synthetic anatomy. Disable motion blur on scientific imagery, exposed HU planes, scale panels, and labels; fast camera arcs must not smear image evidence or measurements.
 
@@ -184,7 +183,7 @@ Start with bounded EEVEE hero renders and a 4-7.5 second low-resolution proof at
 
 The implementation maps the historical raw 72-second timeline to 36 seconds with `t_raw = 2 * t_output`, halving nominal holds and transitions as well as shot boundaries. Authored local motion tracks then stay inside each fixed shot, with endpoints pinned and explicit plateaus for holds. This is not a second global speed multiplier. Deliberate scan tracks retain steady interiors; whenever a selected plane changes, both panels consume the same resulting state. Retiming changes temporal scheduling, not source geometry, slice sampling rules, or rest coordinates.
 
-All 27 cinematic unit tests passed in the independent full-suite rerun. Coverage includes the schedule, orbit, holds, stack, branches, and source geometry, plus depth-view state without false image parity, continuous ending fade/narrowing and 35.5-second settling, and fixed right CT evidence. Earlier private image-pair and Chrome checks support the unchanged proof and scoped playback behavior; the revised artifact also passed maintainer-reported full validation/decode. Some ruler-label offsets remain non-blocking polish. These checks do not certify every transition or continuous human aesthetic acceptance.
+All 28 cinematic and 9 candidate-geometry tests passed in the independent 136-test Python rerun with encoder smoke; all 53 frontend tests also passed. Coverage includes schedule, orbit progress, holds, source geometry, persistent N1 state, fixed right CT evidence, strict boundary rejection with separate density display, exact native-HU isovalue, and runtime-threshold captions. The tests do not run Blender or certify rendered label occlusion. Earlier private image-pair and Chrome checks support the unchanged proof and scoped historical playback behavior; the latest artifact passed maintainer-reported validation/decode. Some ruler-label offsets remain non-blocking polish. These checks do not certify every transition or continuous human aesthetic acceptance.
 
 Validate exact expected frame indices, open every PNG and check dimensions, probe frame rate/duration/codec, and fully decode the MP4 with ffmpeg. Numerical trajectory tests and frame comparisons supplement actual continuous playback; snapshots do not establish motion quality.
 
